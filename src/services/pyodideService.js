@@ -2,6 +2,23 @@
  * PyodideService — wraps the Pyodide Web Worker with a Promise-based API.
  * Uses a Map of pending promises keyed by auto-incrementing call id.
  */
+
+/**
+ * Normalize a worker error value to a readable string.
+ * The worker always sends a string, but this guard handles any edge case where
+ * the value somehow arrives as a non-string (e.g. structured-clone of an object).
+ * @param {unknown} error
+ * @returns {string}
+ */
+function normalizeWorkerError(error) {
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch (_) {
+    return String(error)
+  }
+}
+
 export class PyodideService {
   constructor() {
     this._worker = new Worker(new URL('../workers/pyodide.worker.js', import.meta.url), { type: 'module' })
@@ -22,18 +39,7 @@ export class PyodideService {
       if (msg.ok) {
         pending.resolve(msg.result)
       } else {
-        // Ensure error is always a readable string even if the worker sent an object
-        let errText
-        if (typeof msg.error === 'string') {
-          errText = msg.error
-        } else {
-          try {
-            errText = JSON.stringify(msg.error)
-          } catch (_) {
-            errText = String(msg.error)
-          }
-        }
-        pending.reject(new Error(errText))
+        pending.reject(new Error(normalizeWorkerError(msg.error)))
       }
     }
 

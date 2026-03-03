@@ -30,6 +30,30 @@ function progress(text) {
   self.postMessage({ type: 'progress', text })
 }
 
+/**
+ * Serialize any thrown value to a plain string so it survives postMessage.
+ * Python exceptions from Pyodide may carry non-string .message values or
+ * use a Pyodide proxy wrapper, so we guard every coercion.
+ * @param {unknown} err
+ * @returns {string}
+ */
+function serializeError(err) {
+  try {
+    if (typeof err === 'string') return err
+    if (err instanceof Error) {
+      // String() guards against .message being a Pyodide proxy object
+      return err.message ? String(err.message) : err.toString()
+    }
+    try {
+      return JSON.stringify(err)
+    } catch (_) {
+      return String(err)
+    }
+  } catch (_) {
+    return 'Unknown worker error'
+  }
+}
+
 async function cmdInit() {
   progress('正在加载 Pyodide 运行时...')
   pyodide = await loadPyodide()
@@ -125,26 +149,6 @@ self.onmessage = async (event) => {
     }
     self.postMessage({ id, ok: true, result })
   } catch (err) {
-    // Serialize the error to a plain string so it survives postMessage and is
-    // readable on the main thread (Python exceptions from runPythonAsync may
-    // carry non-string .message values or use Pyodide's PythonError wrapper).
-    let errMsg
-    try {
-      if (typeof err === 'string') {
-        errMsg = err
-      } else if (err instanceof Error) {
-        // String(err.message) guards against .message being a Pyodide proxy object
-        errMsg = err.message ? String(err.message) : err.toString()
-      } else {
-        try {
-          errMsg = JSON.stringify(err)
-        } catch (_) {
-          errMsg = String(err)
-        }
-      }
-    } catch (_) {
-      errMsg = 'Unknown worker error'
-    }
-    self.postMessage({ id, ok: false, error: errMsg })
+    self.postMessage({ id, ok: false, error: serializeError(err) })
   }
 }
