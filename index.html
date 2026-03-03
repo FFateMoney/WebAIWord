@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebAIWord - AI 辅助 Word 编辑器</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+  <!-- 顶部工具栏 -->
+  <header id="toolbar">
+    <div class="toolbar-brand">📝 WebAIWord</div>
+    <div class="toolbar-actions">
+      <button id="btn-import" disabled title="导入 .docx 文档">导入 .docx</button>
+      <button id="btn-update-ai" disabled title="将当前文档内容同步到 AI 上下文">更新到 AI</button>
+      <button id="btn-compile" disabled title="将 AI 返回的 JSON 渲染到编辑器">编译到文档</button>
+      <button id="btn-export" disabled title="导出为 .docx 文件">导出 .docx</button>
+      <button id="btn-apikey" disabled title="配置 AI API Key">⚙️ API Key</button>
+    </div>
+  </header>
+
+  <!-- Pyodide 加载进度条 -->
+  <div id="progress-container">
+    <div id="progress-bar"></div>
+    <span id="progress-text">正在初始化 Pyodide 运行时...</span>
+  </div>
+
+  <!-- 主内容区：双栏 -->
+  <main id="app-main">
+
+    <!-- 左栏：canvas-editor 文档编辑区 -->
+    <section id="editor-pane">
+      <div id="canvas-container"></div>
+    </section>
+
+    <!-- 分隔线 -->
+    <div id="divider"></div>
+
+    <!-- 右栏：AI 对话面板 -->
+    <section id="chat-pane">
+      <div id="chat-messages">
+        <div class="chat-welcome">
+          <p>🤖 <strong>WebAIWord AI 助手</strong></p>
+          <p>请先导入 .docx 文档，然后点击「更新到 AI」将文档内容同步到此处，再开始对话。</p>
+        </div>
+      </div>
+      <div id="chat-input-area">
+        <textarea
+          id="chat-input"
+          placeholder="输入修改需求，例如：将所有标题改为红色..."
+          rows="3"
+          disabled
+        ></textarea>
+        <button id="btn-send" disabled>发送</button>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- API Key 配置模态框（后续步骤使用，先放占位） -->
+  <div id="modal-apikey" class="modal hidden">
+    <div class="modal-content">
+      <h3>配置 AI API</h3>
+      <label>Provider
+        <select id="select-provider">
+          <option value="openai">OpenAI</option>
+          <option value="claude">Claude (Anthropic)</option>
+          <option value="custom">自定义 Base URL</option>
+        </select>
+      </label>
+      <label>API Key
+        <input type="password" id="input-apikey" placeholder="sk-..." />
+      </label>
+      <label id="label-baseurl" class="hidden">Base URL
+        <input type="text" id="input-baseurl" placeholder="https://api.example.com/v1" />
+      </label>
+      <label>Model
+        <input type="text" id="input-model" placeholder="gpt-4o" />
+      </label>
+      <div class="modal-actions">
+        <button id="btn-save-apikey">保存</button>
+        <button id="btn-close-modal">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 隐藏的文件输入 -->
+  <input type="file" id="file-input" accept=".docx" style="display:none" />
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
