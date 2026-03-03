@@ -1,4 +1,18 @@
 import Editor from '@hufe921/canvas-editor'
+import { PyodideService } from './services/pyodideService.js'
+import { AIService } from './services/aiService.js'
+import { aiwordToCanvas, canvasToAiword } from './adapters/aiword-to-canvas.js'
+
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = {
+  pyodide: new PyodideService(),
+  ai: new AIService(),
+  editor: null,
+  fullAst: null,
+  currentAiView: null,
+  lastAiJson: null,
+  chatHistory: [],
+}
 
 // ─── DOM refs ───────────────────────────────────────────────────────────────
 const progressContainer = document.getElementById('progress-container')
@@ -53,7 +67,7 @@ function appendMessage(role, text) {
 
 // ─── canvas-editor 初始化 ────────────────────────────────────────────────────
 const container = document.getElementById('canvas-container')
-const editor = new Editor(
+state.editor = new Editor(
   container,
   { main: [], header: [] },          // 初始空文档
   {
@@ -86,12 +100,7 @@ btnSaveApiKey.addEventListener('click', () => {
   const model    = document.getElementById('input-model').value.trim()
   const baseUrl  = document.getElementById('input-baseurl').value.trim()
   if (key) {
-    localStorage.setItem('waw_apikey',   key)
-    localStorage.setItem('waw_provider', provider)
-    localStorage.setItem('waw_model',    model || 'gpt-4o')
-    if (provider === 'custom' && baseUrl) {
-      localStorage.setItem('waw_baseurl', baseUrl)
-    }
+    state.ai.saveConfig({ provider, apiKey: key, model: model || 'gpt-4o', baseUrl })
     modalApiKey.classList.add('hidden')
     appendMessage('system', `✅ API Key 已保存（Provider: ${provider}）`)
   } else {
@@ -99,27 +108,93 @@ btnSaveApiKey.addEventListener('click', () => {
   }
 })
 
-// ─── 文件导入骨架（后续 Step 2 完善）────────────────────────────────────────
+// ─── 文件导入 ────────────────────────────────────────────────────────────────
 btnImport.addEventListener('click', () => fileInput.click())
 fileInput.addEventListener('change', async (e) => {
   const file = e.target.files?.[0]
   if (!file) return
   fileInput.value = ''
-  appendMessage('system', `📂 已选择文件：${file.name}（Pyodide 解析将在 Step 2 实现）`)
+  appendMessage('system', `📂 正在解析：${file.name}...`)
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const docxBytes = new Uint8Array(arrayBuffer)
+    const { fullAst, aiView } = await state.pyodide.parse(docxBytes)
+    state.fullAst = fullAst
+    state.currentAiView = aiView
+    const canvasData = aiwordToCanvas(aiView)
+    state.editor.setValue(canvasData)
+    appendMessage('system', `✅ 文档解析完成：${file.name}（${(aiView?.document?.body ?? []).length} 个段落）`)
+  } catch (err) {
+    appendMessage('system', `❌ 解析失败：${err.message}`)
+    console.error(err)
+  }
 })
 
-// ─── 其他按钮占位（后续步骤实现）────────────────────────────────────────────
+// ─── 其他按钮 ────────────────────────────────────────────────────────────────
 btnUpdateAI.addEventListener('click', () => {
-  appendMessage('system', '📋 更新到 AI（适配层将在 Step 3 实现）')
-})
-btnCompile.addEventListener('click', () => {
-  appendMessage('system', '🔨 编译到文档（适配层将在 Step 3 实现）')
-})
-btnExport.addEventListener('click', () => {
-  appendMessage('system', '💾 导出 .docx（Pyodide 渲染将在 Step 2 实现）')
+  try {
+    const canvasData = state.editor.getValue()
+    state.currentAiView = canvasToAiword(canvasData, state.currentAiView)
+    // Update or insert system prompt in chat history
+    const systemPrompt = {
+      role: 'system',
+      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。请根据用户的要求修改文档，并以相同的 JSON 格式返回修改后的完整内容。\n\n${JSON.stringify(state.currentAiView, null, 2)}`,
+    }
+    const sysIdx = state.chatHistory.findIndex(m => m.role === 'system')
+    if (sysIdx >= 0) {
+      state.chatHistory[sysIdx] = systemPrompt
+    } else {
+      state.chatHistory.unshift(systemPrompt)
+    }
+    chatInput.disabled = false
+    btnSend.disabled = false
+    appendMessage('system', '📋 文档内容已同步到 AI 上下文，可以开始对话了')
+  } catch (err) {
+    appendMessage('system', `❌ 同步失败：${err.message}`)
+    console.error(err)
+  }
 })
 
-// ─── 发送消息占位 ─────────────────────────────────────────────────────────────
+btnCompile.addEventListener('click', () => {
+  if (!state.lastAiJson) {
+    appendMessage('system', '⚠️ 还没有 AI 返回的 JSON，请先发送消息')
+    return
+  }
+  try {
+    const canvasData = aiwordToCanvas(state.lastAiJson)
+    state.editor.setValue(canvasData)
+    appendMessage('system', '✅ AI 内容已编译到文档')
+  } catch (err) {
+    appendMessage('system', `❌ 编译失败：${err.message}`)
+    console.error(err)
+  }
+})
+
+btnExport.addEventListener('click', async () => {
+  if (!state.fullAst) {
+    appendMessage('system', '⚠️ 请先导入一个 .docx 文档')
+    return
+  }
+  appendMessage('system', '💾 正在导出文档...')
+  try {
+    const canvasData = state.editor.getValue()
+    const aiView = canvasToAiword(canvasData, state.currentAiView)
+    const { docxBytes } = await state.pyodide.render(state.fullAst, aiView)
+    const blob = new Blob([docxBytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'document.docx'
+    a.click()
+    URL.revokeObjectURL(url)
+    appendMessage('system', '✅ 文档导出成功')
+  } catch (err) {
+    appendMessage('system', `❌ 导出失败：${err.message}`)
+    console.error(err)
+  }
+})
+
+// ─── 发送消息 ─────────────────────────────────────────────────────────────────
 btnSend.addEventListener('click', sendMessage)
 chatInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -127,27 +202,77 @@ chatInput.addEventListener('keydown', (e) => {
     sendMessage()
   }
 })
-function sendMessage() {
+async function sendMessage() {
   const text = chatInput.value.trim()
   if (!text) return
   chatInput.value = ''
   appendMessage('user', text)
-  appendMessage('system', '⚙️ AI 服务将在 Step 4 实现')
+  state.chatHistory.push({ role: 'user', content: text })
+
+  // Create AI bubble to stream into
+  const aiBubble = document.createElement('div')
+  aiBubble.className = 'chat-bubble assistant'
+  aiBubble.textContent = '⌛ 正在思考...'
+  chatMessages.appendChild(aiBubble)
+  chatMessages.scrollTop = chatMessages.scrollHeight
+
+  btnSend.disabled = true
+  chatInput.disabled = true
+
+  let fullText = ''
+  try {
+    aiBubble.textContent = ''
+    for await (const token of state.ai.streamChat(state.chatHistory)) {
+      fullText += token
+      aiBubble.textContent = fullText
+      chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+    state.chatHistory.push({ role: 'assistant', content: fullText })
+
+    // Try to extract JSON from the response
+    const json = state.ai.extractJSON(fullText)
+    if (json) {
+      state.lastAiJson = json
+      btnCompile.disabled = false
+      const notice = document.createElement('div')
+      notice.className = 'chat-bubble system'
+      notice.textContent = '✅ 检测到 JSON 内容，可点击「编译到文档」预览'
+      chatMessages.appendChild(notice)
+      chatMessages.scrollTop = chatMessages.scrollHeight
+    }
+  } catch (err) {
+    aiBubble.textContent = `❌ 错误：${err.message}`
+    aiBubble.style.color = '#dc2626'
+    console.error(err)
+  } finally {
+    btnSend.disabled = false
+    chatInput.disabled = false
+    chatInput.focus()
+  }
 }
 
-// ─── 模拟 Pyodide 加载（Step 2 替换为真实 Worker）────────────────────────────
-async function simulatePyodideLoading() {
-  setProgress(10, '正在加载 Pyodide 运行时...')
-  await new Promise(r => setTimeout(r, 600))
-  setProgress(40, '正在安装 Python 依赖（python-docx, lxml）...')
-  await new Promise(r => setTimeout(r, 600))
-  setProgress(75, '正在加载 AIWord 核心模块...')
-  await new Promise(r => setTimeout(r, 500))
-  setProgress(100, 'Pyodide 就绪')
-  await new Promise(r => setTimeout(r, 300))
-  hideProgress()
-  enableToolbar()
-  appendMessage('system', '✅ Pyodide 运行时就绪（当前为模拟模式，Step 2 将接入真实 Worker）')
+// ─── Pyodide 初始化 ───────────────────────────────────────────────────────────
+async function initPyodide() {
+  let progressPercent = 0
+  setProgress(5, '正在初始化 Pyodide 运行时...')
+  try {
+    await state.pyodide.init((text) => {
+      progressPercent = Math.min(progressPercent + 15, 90)
+      setProgress(progressPercent, text)
+    })
+    setProgress(100, 'Pyodide 就绪')
+    await new Promise(r => setTimeout(r, 300))
+    hideProgress()
+    enableToolbar()
+    appendMessage('system', '✅ Pyodide 运行时就绪，可以导入 .docx 文档了')
+  } catch (err) {
+    setProgress(100, `初始化失败：${err.message}`)
+    appendMessage('system', `❌ Pyodide 初始化失败：${err.message}`)
+    console.error(err)
+    // Still enable toolbar so user can interact (some features won't work)
+    enableToolbar()
+    hideProgress()
+  }
 }
 
-simulatePyodideLoading()
+initPyodide()
