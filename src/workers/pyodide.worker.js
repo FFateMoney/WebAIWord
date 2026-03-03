@@ -31,6 +31,36 @@ function progress(text) {
 }
 
 /**
+ * Create a directory (and any missing ancestors) in Pyodide FS.
+ * If a segment already exists as a directory, it is silently skipped.
+ * If a segment already exists but is NOT a directory, an error with the
+ * conflicting path is thrown.
+ * @param {string} path  Absolute path, e.g. '/word_ast/parser'
+ */
+function ensureDir(path) {
+  const parts = path.split('/').filter(Boolean)
+  let currentPath = ''
+  for (const part of parts) {
+    currentPath += '/' + part
+    try {
+      pyodide.FS.mkdir(currentPath)
+    } catch (e) {
+      // errno 20 = EEXIST in emscripten — directory already exists, skip
+      if (e && e.errno === 20) {
+        // Verify it really is a directory
+        const stat = pyodide.FS.stat(currentPath)
+        if (!pyodide.FS.isDir(stat.mode)) {
+          throw new Error(`ensureDir: path exists but is not a directory: ${currentPath}`)
+        }
+        // Already a directory — continue
+      } else {
+        throw new Error(`ensureDir: failed to create ${currentPath}: ${e && e.message ? e.message : String(e)}`)
+      }
+    }
+  }
+}
+
+/**
  * Serialize any thrown value to a plain string so it survives postMessage.
  * Python exceptions from Pyodide may carry non-string .message values or
  * use a Pyodide proxy wrapper, so we guard every coercion.
@@ -69,23 +99,33 @@ await micropip.install('python-docx')
 `)
 
   progress('正在加载 AIWord 模块文件...')
-  // Create directory structure in Pyodide FS
-  pyodide.FS.mkdir('/word_ast')
-  pyodide.FS.mkdir('/word_ast/parser')
-  pyodide.FS.mkdir('/word_ast/renderer')
-  pyodide.FS.mkdir('/word_ast/utils')
-  pyodide.FS.mkdir('/tmp')
+  // Create directory structure in Pyodide FS (ensureDir skips existing dirs)
+  ensureDir('/word_ast')
+  ensureDir('/word_ast/parser')
+  ensureDir('/word_ast/renderer')
+  ensureDir('/word_ast/utils')
+  ensureDir('/tmp')
 
   // Fetch each Python file and write to FS
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
   for (let i = 0; i < WORD_AST_FILES.length; i++) {
     const relPath = WORD_AST_FILES[i]
-    const url = base + '/' + relPath
+    const url = `${base}/${relPath}`
+    const fsPath = `/${relPath}`
     progress(`正在加载模块文件 (${i + 1}/${WORD_AST_FILES.length}): ${relPath}`)
-    const resp = await fetch(url)
-    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${url}`)
+    let resp
+    try {
+      resp = await fetch(url)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${url}`)
+    } catch (e) {
+      throw new Error(`fetch 失败 [${url}]: ${e && e.message ? e.message : String(e)}`)
+    }
     const text = await resp.text()
-    pyodide.FS.writeFile('/' + relPath, text)
+    try {
+      pyodide.FS.writeFile(fsPath, text)
+    } catch (e) {
+      throw new Error(`writeFile 失败 [${fsPath}]: ${e && e.message ? e.message : String(e)}`)
+    }
   }
 
   progress('正在导入 AIWord 模块...')
