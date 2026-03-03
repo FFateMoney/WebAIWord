@@ -22,7 +22,25 @@ export class PyodideService {
       if (msg.ok) {
         pending.resolve(msg.result)
       } else {
-        pending.reject(new Error(msg.error))
+        // msg.error may be a serialized { name, message, stack, pythonTraceback? }
+        // object (new format) or a legacy plain string.  Always normalise to a
+        // proper Error so callers see a descriptive message, never [object Object].
+        const errInfo = msg.error
+        let message
+        if (typeof errInfo === 'string') {
+          message = errInfo
+        } else if (errInfo && typeof errInfo === 'object') {
+          // Prefer the Python traceback when available — it's the most useful.
+          message = errInfo.pythonTraceback || errInfo.message || JSON.stringify(errInfo)
+        } else {
+          message = String(errInfo ?? 'Unknown worker error')
+        }
+        const error = new Error(message)
+        if (errInfo && typeof errInfo === 'object') {
+          if (errInfo.name)  error.name  = errInfo.name
+          if (errInfo.stack) error.stack = errInfo.stack
+        }
+        pending.reject(error)
       }
     }
 
