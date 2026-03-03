@@ -76,10 +76,22 @@ WebAIWord/
 ├── public/
 │   └── word_ast/               # AIWord Python 源码（静态资源）
 │       ├── __init__.py
-│       ├── parser.py
 │       ├── ai_view.py
-│       ├── merger.py
-│       └── renderer.py
+│       ├── ai_merge.py
+│       ├── schema.py
+│       ├── parser/
+│       │   ├── document_parser.py
+│       │   ├── paragraph_parser.py
+│       │   ├── table_parser.py
+│       │   └── style_parser.py
+│       ├── renderer/
+│       │   ├── document_renderer.py
+│       │   ├── paragraph_renderer.py
+│       │   ├── table_renderer.py
+│       │   ├── toc_renderer.py
+│       │   └── style_renderer.py
+│       └── utils/
+│           └── units.py
 ├── docs/
 │   ├── architecture.md         # 本文档
 │   ├── data-flow.md            # 数据流图

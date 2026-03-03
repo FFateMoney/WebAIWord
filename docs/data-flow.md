@@ -201,7 +201,7 @@ sequenceDiagram
     UI->>UI: URL.createObjectURL(blob)
     UI->>User: 浏览器触发文件下载 output.docx
 
-    Note over Python,Worker: merge_ai_edits 通过 id 字段<br/>匹配 full_ast 与 ai_view 中的段落<br/>保留 _raw_* 字段中的原始格式
+    Note over Python,Worker: merge_ai_edits 通过 id 字段匹配 full_ast 与 ai_view 中的段落<br/>保留 _raw_* XML 字段以保证格式保真（保真性关键步骤！）
 ```
 
 ---
