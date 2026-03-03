@@ -22,7 +22,18 @@ export class PyodideService {
       if (msg.ok) {
         pending.resolve(msg.result)
       } else {
-        pending.reject(new Error(msg.error))
+        // Ensure error is always a readable string even if the worker sent an object
+        let errText
+        if (typeof msg.error === 'string') {
+          errText = msg.error
+        } else {
+          try {
+            errText = JSON.stringify(msg.error)
+          } catch (_) {
+            errText = String(msg.error)
+          }
+        }
+        pending.reject(new Error(errText))
       }
     }
 

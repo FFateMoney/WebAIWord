@@ -54,9 +54,12 @@ await micropip.install('python-docx')
 
   // Fetch each Python file and write to FS
   const base = import.meta.env.BASE_URL.replace(/\/$/, '')
-  for (const relPath of WORD_AST_FILES) {
-    const resp = await fetch(base + '/' + relPath)
-    if (!resp.ok) throw new Error(`Failed to fetch ${relPath}: ${resp.status}`)
+  for (let i = 0; i < WORD_AST_FILES.length; i++) {
+    const relPath = WORD_AST_FILES[i]
+    const url = base + '/' + relPath
+    progress(`正在加载模块文件 (${i + 1}/${WORD_AST_FILES.length}): ${relPath}`)
+    const resp = await fetch(url)
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} ${resp.statusText}: ${url}`)
     const text = await resp.text()
     pyodide.FS.writeFile('/' + relPath, text)
   }
@@ -122,6 +125,26 @@ self.onmessage = async (event) => {
     }
     self.postMessage({ id, ok: true, result })
   } catch (err) {
-    self.postMessage({ id, ok: false, error: err.message || String(err) })
+    // Serialize the error to a plain string so it survives postMessage and is
+    // readable on the main thread (Python exceptions from runPythonAsync may
+    // carry non-string .message values or use Pyodide's PythonError wrapper).
+    let errMsg
+    try {
+      if (typeof err === 'string') {
+        errMsg = err
+      } else if (err instanceof Error) {
+        // String(err.message) guards against .message being a Pyodide proxy object
+        errMsg = err.message ? String(err.message) : err.toString()
+      } else {
+        try {
+          errMsg = JSON.stringify(err)
+        } catch (_) {
+          errMsg = String(err)
+        }
+      }
+    } catch (_) {
+      errMsg = 'Unknown worker error'
+    }
+    self.postMessage({ id, ok: false, error: errMsg })
   }
 }
