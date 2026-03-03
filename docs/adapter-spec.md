@@ -51,7 +51,7 @@ interface Element {
   italic?: boolean;       // 斜体，默认 false
   underline?: boolean;    // 下划线，默认 false
   strikeout?: boolean;    // 删除线，默认 false
-  size?: number;          // 字体大小（半磅），默认 16（即 8pt）
+  size?: number;          // 字体大小，单位 pt（磅）。默认 16pt
   color?: string;         // 文字颜色，CSS 颜色字符串，如 "#FF0000"
   highlight?: string;     // 高亮背景色，CSS 颜色字符串
   font?: string;          // 字体名称，如 "Arial"
@@ -197,11 +197,13 @@ interface Run {
 | `run.text` | `string` | `element.value` | `string` | 直接映射 |
 | `run.bold` | `boolean` | `element.bold` | `boolean` | `false` 时省略 |
 | `run.italic` | `boolean` | `element.italic` | `boolean` | `false` 时省略 |
-| `run.size` | `number` | `element.size` | `number` | 直接映射（单位相同：半磅） |
+| `run.size` | `number` | `element.size` | `number` | `canvas.size = aiword.size / 2`（AIWord 单位为半点，canvas-editor 单位为 pt） |
 | `run.color` | `string \| null` | `element.color` | `string \| undefined` | `null` → 省略该字段 |
 | `run.font_ascii` | `string \| null` | `element.font` | `string \| undefined` | `null` → 省略该字段 |
 | _(无对应)_ | — | `element.underline` | `boolean` | ai_view 不含下划线，忽略 |
 | _(无对应)_ | — | `element.strikeout` | `boolean` | ai_view 不含删除线，忽略 |
+
+> **size 单位说明**：AIWord AST 的 `size` 单位为**半点（half-point）**，转换为 canvas-editor 的 `size`（单位 pt）时需除以 2：`canvas.size = aiword.size / 2`
 
 ### 3.2 Run 级字段映射（canvas-editor → ai_view）
 
@@ -210,7 +212,7 @@ interface Run {
 | `element.value` | `string` | `run.text` | `string` | 直接映射（排除 `\n`） |
 | `element.bold` | `boolean \| undefined` | `run.bold` | `boolean` | `undefined` → `false` |
 | `element.italic` | `boolean \| undefined` | `run.italic` | `boolean` | `undefined` → `false` |
-| `element.size` | `number \| undefined` | `run.size` | `number` | `undefined` → `16`（默认值） |
+| `element.size` | `number \| undefined` | `run.size` | `number` | `aiword.size = canvas.size * 2`；`undefined` → `16`（默认值） |
 | `element.color` | `string \| undefined` | `run.color` | `string \| null` | `undefined` → `null` |
 | `element.font` | `string \| undefined` | `run.font_ascii` | `string \| null` | `undefined` → `null` |
 

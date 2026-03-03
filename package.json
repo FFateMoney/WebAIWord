@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@hufe921/canvas-editor": "^0.9.35"
+    "@hufe921/canvas-editor": "^0.9.115"
   },
   "devDependencies": {
     "vite": "^5.4.0"
