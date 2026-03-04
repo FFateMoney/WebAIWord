@@ -161,6 +161,60 @@ function normalizeUpdateFields(opItem) {
   return opItem?.fields
 }
 
+function normalizePatchOperation(rawOpItem) {
+  if (!rawOpItem || typeof rawOpItem !== 'object') return rawOpItem
+
+  if (rawOpItem.op) return rawOpItem
+
+  // 兼容模型常见错误：把 op 名称当作外层 key
+  // 例如：{ "replace_by_id": { "target_id": "p1", "value": {...} } }
+  const supportedOps = [
+    'add',
+    'replace',
+    'remove',
+    'insert_after_id',
+    'insert_before_id',
+    'replace_by_id',
+    'update_by_id',
+  ]
+  for (const key of supportedOps) {
+    if (!(key in rawOpItem)) continue
+
+    const payload = rawOpItem[key]
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      return { op: key, ...payload }
+    }
+    return { op: key, value: payload }
+  }
+
+  return rawOpItem
+}
+
+function normalizePatchEnvelopeShape(patchEnvelope) {
+  if (!patchEnvelope || typeof patchEnvelope !== 'object') {
+    return patchEnvelope
+  }
+
+  const normalized = { ...patchEnvelope }
+
+  if (typeof normalized.operations === 'string') {
+    try {
+      const parsed = JSON.parse(normalized.operations)
+      if (Array.isArray(parsed)) {
+        normalized.operations = parsed
+      }
+    } catch {
+      // noop，保留原值交给后续校验抛错
+    }
+  }
+
+  if (Array.isArray(normalized.operations)) {
+    normalized.operations = normalized.operations.map(normalizePatchOperation)
+  }
+
+  return normalized
+}
+
 export class AIPatchService {
   isPatchEnvelope(obj) {
     return !!obj && typeof obj === 'object' && obj.protocol === 'aiword.patch.v1' && Array.isArray(obj.operations)
@@ -171,7 +225,8 @@ export class AIPatchService {
   }
 
   applyPatch(baseAiView, patchEnvelope) {
-    if (!this.isPatchEnvelope(patchEnvelope)) {
+    const normalizedEnvelope = normalizePatchEnvelopeShape(patchEnvelope)
+    if (!this.isPatchEnvelope(normalizedEnvelope)) {
       throw new Error('不是 aiword.patch.v1 协议格式')
     }
 
@@ -181,7 +236,7 @@ export class AIPatchService {
       throw new Error('当前文档结构不合法：缺少 document.body')
     }
 
-    for (const opItem of patchEnvelope.operations) {
+    for (const opItem of normalizedEnvelope.operations) {
       const op = opItem?.op
       if (!op) throw new Error('patch 操作缺少 op 字段')
 

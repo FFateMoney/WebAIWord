@@ -122,24 +122,38 @@ function appendMessage(role, text) {
 }
 
 function buildPatchRepairPrompt(previousResponse, errorMessage) {
-  return `你上一次返回的 patch JSON 结构有误，导致系统无法应用。
+  return `你上一条回复无法被系统应用，请根据错误信息自我修正并重新输出。
 
 错误信息：${errorMessage}
 
-请严格按以下要求重新输出：
-1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要任何解释文本。
-2) 返回对象必须包含：
+强制要求（必须全部满足）：
+1) 只返回一个 JSON 对象（可放在 \`\`\`json 代码块中），禁止输出任何解释。
+2) 顶层必须是：
 {
   "protocol": "aiword.patch.v1",
-  "operations": [
-    { "op": "...", "path/target_id/value/...": "..." }
-  ]
+  "operations": [ ... ]
 }
-3) operations 中每一项必须有 op 字段；按段落 id 的操作必须使用 target_id（snake_case）。
-4) 只输出最小必要修改。
+3) operations 必须是数组；每一项都必须有字符串字段 op。
+4) 若使用按段落 id 的操作（insert_after_id / insert_before_id / replace_by_id / update_by_id），必须使用 target_id（snake_case），不要用 targetId。
+5) 只输出最小必要修改，且可被直接执行。
 
-你上一条返回（仅供修复参考）：
+你上一条原始回复（仅供修复）：
 ${previousResponse}`
+}
+
+function getSystemMessages() {
+  return state.chatHistory.filter(m => m.role === 'system')
+}
+
+async function streamAssistantText(messages, bubble) {
+  bubble.textContent = ''
+  let text = ''
+  for await (const token of state.ai.streamChat(messages)) {
+    text += token
+    bubble.textContent = text
+    chatMessages.scrollTop = chatMessages.scrollHeight
+  }
+  return text
 }
 
 function applyAiResponseText(text) {
@@ -305,22 +319,16 @@ async function sendMessage() {
   btnSend.disabled = true
   chatInput.disabled = true
 
-  let fullText = ''
   try {
-    aiBubble.textContent = ''
-    for await (const token of state.ai.streamChat(state.chatHistory)) {
-      fullText += token
-      aiBubble.textContent = fullText
-      chatMessages.scrollTop = chatMessages.scrollHeight
-    }
-    state.chatHistory.push({ role: 'assistant', content: fullText })
+    const firstReply = await streamAssistantText(state.chatHistory, aiBubble)
+    state.chatHistory.push({ role: 'assistant', content: firstReply })
 
-    let aiTextToApply = fullText
+    let aiTextToApply = firstReply
     for (let attempt = 0; attempt <= PATCH_REPAIR_MAX_RETRIES; attempt++) {
       try {
         applyAiResponseText(aiTextToApply)
         if (attempt > 0) {
-          appendMessage('system', '✅ AI 已根据反馈自动修复结构并成功应用')
+          appendMessage('system', '✅ 已将错误自动反馈给 AI，修复后的结果已成功应用')
         }
         break
       } catch (applyErr) {
@@ -328,17 +336,16 @@ async function sendMessage() {
           throw applyErr
         }
 
-        appendMessage('system', `⚠️ AI 输出结构异常，正在自动反馈并重试（${attempt + 1}/${PATCH_REPAIR_MAX_RETRIES}）`)
+        appendMessage('system', `⚠️ AI 输出不合法，已自动发送错误并要求 AI 自我修正（${attempt + 1}/${PATCH_REPAIR_MAX_RETRIES}）`)
         const repairPrompt = buildPatchRepairPrompt(aiTextToApply, applyErr.message)
-        state.chatHistory.push({ role: 'user', content: repairPrompt })
+        const repairMessages = [
+          ...getSystemMessages(),
+          { role: 'assistant', content: aiTextToApply },
+          { role: 'user', content: repairPrompt },
+        ]
 
-        aiBubble.textContent = ''
-        let repairedText = ''
-        for await (const token of state.ai.streamChat(state.chatHistory)) {
-          repairedText += token
-          aiBubble.textContent = repairedText
-          chatMessages.scrollTop = chatMessages.scrollHeight
-        }
+        state.chatHistory.push({ role: 'user', content: repairPrompt })
+        const repairedText = await streamAssistantText(repairMessages, aiBubble)
         state.chatHistory.push({ role: 'assistant', content: repairedText })
         aiTextToApply = repairedText
       }
