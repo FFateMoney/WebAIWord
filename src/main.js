@@ -1,6 +1,7 @@
 import Editor from '@hufe921/canvas-editor'
 import { PyodideService } from './services/pyodideService.js'
 import { AIService } from './services/aiService.js'
+import { storageService } from './services/storageService.js'
 import { aiwordToCanvas, canvasToAiword } from './adapters/aiword-to-canvas.js'
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -31,6 +32,7 @@ const fileInput   = document.getElementById('file-input')
 const modalApiKey   = document.getElementById('modal-apikey')
 const btnSaveApiKey = document.getElementById('btn-save-apikey')
 const btnCloseModal = document.getElementById('btn-close-modal')
+const btnClearCache = document.getElementById('btn-clear-cache')
 const selectProvider = document.getElementById('select-provider')
 const labelBaseUrl   = document.getElementById('label-baseurl')
 const chatMessages   = document.getElementById('chat-messages')
@@ -83,6 +85,13 @@ state.editor = new Editor(
 
 // ─── API Key 模态框 ───────────────────────────────────────────────────────────
 btnApiKey.addEventListener('click', () => {
+  // Populate fields from saved config
+  const cfg = state.ai.getConfig()
+  selectProvider.value = cfg.provider
+  document.getElementById('input-apikey').value = cfg.apiKey
+  document.getElementById('input-baseurl').value = cfg.baseUrl || ''
+  document.getElementById('input-model').value = cfg.model
+  labelBaseUrl.classList.toggle('hidden', cfg.provider !== 'custom')
   modalApiKey.classList.remove('hidden')
 })
 btnCloseModal.addEventListener('click', () => {
@@ -108,6 +117,19 @@ btnSaveApiKey.addEventListener('click', () => {
   }
 })
 
+btnClearCache.addEventListener('click', () => {
+  if (confirm('确认清除所有本地缓存（API Key、草稿等）？')) {
+    storageService.clearAll()
+    document.getElementById('input-apikey').value = ''
+    document.getElementById('input-baseurl').value = ''
+    document.getElementById('input-model').value = ''
+    selectProvider.value = 'openai'
+    labelBaseUrl.classList.add('hidden')
+    appendMessage('system', '🗑️ 本地缓存已清除')
+    modalApiKey.classList.add('hidden')
+  }
+})
+
 // ─── 文件导入 ────────────────────────────────────────────────────────────────
 btnImport.addEventListener('click', () => fileInput.click())
 fileInput.addEventListener('change', async (e) => {
@@ -123,6 +145,7 @@ fileInput.addEventListener('change', async (e) => {
     state.currentAiView = aiView
     const canvasData = aiwordToCanvas(aiView)
     state.editor.command.executeSetValue(canvasData)
+    storageService.saveDraft(canvasData)
     appendMessage('system', `✅ 文档解析完成：${file.name}（${(aiView?.document?.body ?? []).length} 个段落）`)
   } catch (err) {
     appendMessage('system', `❌ 解析失败：${err.message}`)
@@ -134,7 +157,17 @@ fileInput.addEventListener('change', async (e) => {
 btnUpdateAI.addEventListener('click', () => {
   try {
     const canvasData = state.editor.command.getValue()
-    state.currentAiView = canvasToAiword(canvasData, state.currentAiView)
+    const newAiView = canvasToAiword(canvasData, state.currentAiView)
+    // Guard: canvasToAiword is not fully implemented; if it produced an empty body
+    // but the existing aiView has content, preserve the original body to avoid
+    // sending an empty document to the AI.
+    const newBody = newAiView?.document?.body ?? []
+    const oldBody = state.currentAiView?.document?.body ?? []
+    if (newBody.length === 0 && oldBody.length > 0 && newAiView?.document) {
+      console.warn('[UpdateAI] canvasToAiword produced empty body; preserving existing body to prevent data loss.')
+      newAiView.document.body = oldBody
+    }
+    state.currentAiView = newAiView
     // Update or insert system prompt in chat history
     const systemPrompt = {
       role: 'system',
@@ -265,6 +298,16 @@ async function initPyodide() {
     hideProgress()
     enableToolbar()
     appendMessage('system', '✅ Pyodide 运行时就绪，可以导入 .docx 文档了')
+    // Check for saved draft and offer to restore
+    if (storageService.hasDraft()) {
+      if (confirm('检测到上次编辑内容，是否恢复？')) {
+        const draft = storageService.loadDraft()
+        if (draft) {
+          state.editor.command.executeSetValue(draft)
+          appendMessage('system', '✅ 已恢复上次编辑内容')
+        }
+      }
+    }
   } catch (err) {
     setProgress(100, `初始化失败：${err.message}`)
     appendMessage('system', `❌ Pyodide 初始化失败：${err.message}`)
