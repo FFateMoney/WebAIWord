@@ -2,12 +2,14 @@ import Editor from '@hufe921/canvas-editor'
 import { PyodideService } from './services/pyodideService.js'
 import { AIService } from './services/aiService.js'
 import { storageService } from './services/storageService.js'
+import { AIPatchService } from './services/aiPatchService.js'
 import { aiwordToCanvas, canvasToAiword } from './adapters/aiword-to-canvas.js'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
   pyodide: new PyodideService(),
   ai: new AIService(),
+  patch: new AIPatchService(),
   editor: null,
   fullAst: null,
   currentAiView: null,
@@ -162,13 +164,30 @@ btnUpdateAI.addEventListener('click', () => {
     // Update or insert system prompt in chat history
     const systemPrompt = {
       role: 'system',
-      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。请根据用户的要求修改文档，并以相同的 JSON 格式返回修改后的完整内容。
+      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。
 
-输出要求：
+你的返回必须使用补丁协议 aiword.patch.v1，不允许返回完整文档。
+
+输出协议：
+{
+  "protocol": "aiword.patch.v1",
+  "operations": [
+    // 支持操作（注意字段名）：
+    // 1) RFC6902 子集：add / replace / remove（path 为 JSON Pointer）
+    // 2) 按段落 id 的扩展：insert_after_id / insert_before_id / replace_by_id / update_by_id
+    //    - id 定位字段固定用 target_id
+    //    - 示例：{"op":"update_by_id","target_id":"b3","fields":{"style":"Heading2"}}
+  ]
+}
+
+规则：
 1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要附加解释文本。
-2) 所有颜色字段（如 \'overrides.color\'）必须使用 CSS 十六进制格式 \"#RRGGBB\"（必须带 #）。
-3) 不要删除与用户需求无关的字段，保持原始结构和字段名一致。
+2) 只输出最小必要修改，未提及字段表示保持不变。
+3) 禁止修改系统字段：document.meta、id、createdAt、updatedAt、version。
+4) 所有颜色字段（如 overrides.color）必须使用 CSS 十六进制格式 "#RRGGBB"。
+5) 涉及段落插入/替换时，Paragraph 节点必须包含 type、id、style、alignment、content。
 
+当前文档（只读）：
 ${JSON.stringify(state.currentAiView, null, 2)}`,
     }
     const sysIdx = state.chatHistory.findIndex(m => m.role === 'system')
@@ -271,13 +290,26 @@ async function sendMessage() {
     // Try to extract JSON from the response
     const json = state.ai.extractJSON(fullText)
     if (json) {
-      state.lastAiJson = json
-      btnCompile.disabled = false
-      const notice = document.createElement('div')
-      notice.className = 'chat-bubble system'
-      notice.textContent = '✅ 检测到 JSON 内容，可点击「编译到文档」预览'
-      chatMessages.appendChild(notice)
-      chatMessages.scrollTop = chatMessages.scrollHeight
+      if (state.patch.isPatchEnvelope(json)) {
+        const compiled = state.patch.applyPatch(state.currentAiView, json)
+        state.lastAiJson = compiled
+        btnCompile.disabled = false
+        const notice = document.createElement('div')
+        notice.className = 'chat-bubble system'
+        notice.textContent = `✅ 检测到 Patch（${json.operations.length} 条操作），可点击「编译到文档」预览`
+        chatMessages.appendChild(notice)
+        chatMessages.scrollTop = chatMessages.scrollHeight
+      } else if (state.patch.isAiView(json)) {
+        state.lastAiJson = json
+        btnCompile.disabled = false
+        const notice = document.createElement('div')
+        notice.className = 'chat-bubble system'
+        notice.textContent = '⚠️ 检测到完整 JSON（旧模式），仍可编译；建议改用 patch 输出'
+        chatMessages.appendChild(notice)
+        chatMessages.scrollTop = chatMessages.scrollHeight
+      } else {
+        throw new Error('AI 返回了 JSON，但不是 patch 协议或 ai_view 文档')
+      }
     }
   } catch (err) {
     aiBubble.textContent = `❌ 错误：${err.message}`

@@ -57,7 +57,7 @@ git push origin main
 2. **等待解析**：Pyodide 解析文档，左栏显示可编辑的文档内容
 3. **配置 AI**：点击「API Key」设置你的 OpenAI 或 Claude API Key
 4. **更新到 AI**：点击「更新到 AI」将当前文档内容同步到右侧 AI 上下文
-5. **AI 对话**：在右栏输入修改需求，AI 返回修改后的 JSON
+5. **AI 对话**：在右栏输入修改需求，AI 默认返回 `aiword.patch.v1` 补丁（最小变更）
 6. **编译到文档**：点击「编译到文档」将 AI 返回结果渲染到左栏编辑器
 7. **导出文档**：点击「导出 .docx」下载修改后的 Word 文件
 
@@ -81,6 +81,7 @@ git push origin main
 - [完整架构设计](./docs/architecture.md) — 整体分层、数据流、各模块设计
 - [数据流图](./docs/data-flow.md) — Mermaid 流程图，直观展示完整数据链路
 - [适配层规范](./docs/adapter-spec.md) — canvas-editor ↔ AIWord 双向转换详细规范
+- [AI Patch 协议](./docs/patch-protocol.md) — `aiword.patch.v1` 协议与示例
 
 ---
 
