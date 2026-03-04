@@ -162,7 +162,14 @@ btnUpdateAI.addEventListener('click', () => {
     // Update or insert system prompt in chat history
     const systemPrompt = {
       role: 'system',
-      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。请根据用户的要求修改文档，并以相同的 JSON 格式返回修改后的完整内容。\n\n${JSON.stringify(state.currentAiView, null, 2)}`,
+      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。请根据用户的要求修改文档，并以相同的 JSON 格式返回修改后的完整内容。
+
+输出要求：
+1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要附加解释文本。
+2) 所有颜色字段（如 \'overrides.color\'）必须使用 CSS 十六进制格式 \"#RRGGBB\"（必须带 #）。
+3) 不要删除与用户需求无关的字段，保持原始结构和字段名一致。
+
+${JSON.stringify(state.currentAiView, null, 2)}`,
     }
     const sysIdx = state.chatHistory.findIndex(m => m.role === 'system')
     if (sysIdx >= 0) {
