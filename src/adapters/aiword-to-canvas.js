@@ -12,14 +12,14 @@ const ALIGNMENT_MAP = {
   left: 'left',
   center: 'center',
   right: 'right',
-  justify: 'stretch',
+  justify: 'justify',
 }
 
 const REVERSE_ALIGNMENT_MAP = {
   left: 'left',
   center: 'center',
   right: 'right',
-  stretch: 'justify',
+  justify: 'justify',
 }
 
 // Default size/bold for known heading styles (size in half-points)
@@ -66,7 +66,7 @@ export function aiwordToCanvas(aiView) {
       if (effectiveBold) el.bold = true
 
       // italic
-      const italicVal = overrides.italic ?? piece.italic
+      const italicVal = overrides.italic ?? piece.italic ?? defaultRun.italic
       if (italicVal) el.italic = true
 
       // size: half-points → pt
@@ -79,11 +79,11 @@ export function aiwordToCanvas(aiView) {
       }
 
       // color
-      const colorVal = overrides.color ?? piece.color
+      const colorVal = overrides.color ?? piece.color ?? defaultRun.color
       if (colorVal) el.color = colorVal
 
       // font
-      const fontVal = overrides.font_ascii ?? piece.font_ascii
+      const fontVal = overrides.font_ascii ?? piece.font_ascii ?? defaultRun.font_ascii
       if (fontVal) el.font = fontVal
 
       el.rowFlex = rowFlex
