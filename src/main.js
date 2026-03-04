@@ -25,6 +25,7 @@ const progressText       = document.getElementById('progress-text')
 const btnImport   = document.getElementById('btn-import')
 const btnExport   = document.getElementById('btn-export')
 const btnApiKey   = document.getElementById('btn-apikey')
+const btnViewAiView = document.getElementById('btn-view-aiview')
 const btnSend     = document.getElementById('btn-send')
 const chatInput   = document.getElementById('chat-input')
 const fileInput   = document.getElementById('file-input')
@@ -36,6 +37,10 @@ const btnClearCache = document.getElementById('btn-clear-cache')
 const selectProvider = document.getElementById('select-provider')
 const labelBaseUrl   = document.getElementById('label-baseurl')
 const chatMessages   = document.getElementById('chat-messages')
+const modalAiView    = document.getElementById('modal-aiview')
+const aiViewContent  = document.getElementById('aiview-content')
+const btnCopyAiView  = document.getElementById('btn-copy-aiview')
+const btnCloseAiView = document.getElementById('btn-close-aiview')
 const PATCH_REPAIR_MAX_RETRIES = 2
 
 // ─── Progress helpers ────────────────────────────────────────────────────────
@@ -53,6 +58,7 @@ function enableToolbar() {
   btnImport.disabled   = false
   btnExport.disabled   = false
   btnApiKey.disabled   = false
+  btnViewAiView.disabled = false
   btnSend.disabled     = false
   chatInput.disabled   = false
 }
@@ -112,6 +118,25 @@ function compileLastAiJsonToDocument() {
   }
   state.editor.command.executeSetValue(canvasData)
   state.currentAiView = state.lastAiJson
+}
+
+
+function getLatestAiView() {
+  const canvasData = state.editor.command.getValue()
+  return canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
+}
+
+function showAiViewModal() {
+  try {
+    const aiView = getLatestAiView()
+    state.currentAiView = aiView
+    aiViewContent.textContent = JSON.stringify(aiView, null, 2)
+    modalAiView.classList.remove('hidden')
+    appendMessage('system', '👀 已打开当前 AIView 预览')
+  } catch (err) {
+    appendMessage('system', `❌ 打开 AIView 失败：${err.message}`)
+    console.error(err)
+  }
 }
 
 // ─── Chat helpers ────────────────────────────────────────────────────────────
@@ -197,6 +222,24 @@ state.editor = new Editor(
 )
 
 // ─── API Key 模态框 ───────────────────────────────────────────────────────────
+
+btnViewAiView.addEventListener('click', showAiViewModal)
+btnCloseAiView.addEventListener('click', () => {
+  modalAiView.classList.add('hidden')
+})
+modalAiView.addEventListener('click', (e) => {
+  if (e.target === modalAiView) modalAiView.classList.add('hidden')
+})
+btnCopyAiView.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(aiViewContent.textContent)
+    appendMessage('system', '✅ AIView JSON 已复制到剪贴板')
+  } catch (err) {
+    appendMessage('system', '⚠️ 复制失败，请手动选中复制')
+    console.error(err)
+  }
+})
+
 btnApiKey.addEventListener('click', () => {
   // Populate fields from saved config
   const cfg = state.ai.getConfig()

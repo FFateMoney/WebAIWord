@@ -15,6 +15,7 @@
     <div class="toolbar-actions">
       <button id="btn-import" disabled title="导入 .docx 文档">导入 .docx</button>
       <button id="btn-export" disabled title="导出为 .docx 文件">导出 .docx</button>
+      <button id="btn-view-aiview" disabled title="查看当前 AIView JSON">查看 AIView</button>
       <button id="btn-apikey" disabled title="配置 AI API Key">⚙️ API Key</button>
     </div>
   </header>
@@ -23,6 +24,18 @@
   <div id="progress-container">
     <div id="progress-bar"></div>
     <span id="progress-text">正在初始化 Pyodide 运行时...</span>
+  </div>
+
+  <!-- AIView 查看模态框 -->
+  <div id="modal-aiview" class="modal hidden">
+    <div class="modal-content modal-content-large">
+      <h3>当前 AIView</h3>
+      <pre id="aiview-content" class="json-viewer"></pre>
+      <div class="modal-actions">
+        <button id="btn-copy-aiview">复制 JSON</button>
+        <button id="btn-close-aiview">关闭</button>
+      </div>
+    </div>
   </div>
 
   <!-- 主内容区：双栏 -->
