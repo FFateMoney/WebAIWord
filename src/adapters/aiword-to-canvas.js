@@ -8,6 +8,22 @@
  *   - piece.type === 'Text'
  */
 
+/**
+ * Normalize a color value to the '#RRGGBB' or '#AARRGGBB' format expected by
+ * canvas-editor's fillStyle.  Bare 6- or 8-digit hex strings (e.g. "FF0000")
+ * produced by the Python parser are prefixed with '#'.  Values that already
+ * start with '#' or that use other CSS color notations are returned unchanged.
+ * @param {string} color
+ * @returns {string}
+ */
+function normalizeColor(color) {
+  if (!color || typeof color !== 'string') return color
+  if (color.startsWith('#')) return color
+  if (/^[0-9A-Fa-f]{6}$/.test(color)) return `#${color}`
+  if (/^[0-9A-Fa-f]{8}$/.test(color)) return `#${color}`
+  return color
+}
+
 const ALIGNMENT_MAP = {
   left: 'left',
   center: 'center',
@@ -44,6 +60,8 @@ export function aiwordToCanvas(aiView) {
   const elements = []
   const body = aiView?.document?.body ?? []
 
+  console.log('[aiwordToCanvas] input paragraphs:', body.length)
+
   for (const block of body) {
     if (block.type !== 'Paragraph') continue
 
@@ -65,11 +83,11 @@ export function aiwordToCanvas(aiView) {
       const effectiveBold = boldVal !== undefined ? boldVal : (defaultRun.bold ?? styleDefaults.bold)
       if (effectiveBold) el.bold = true
 
-      // italic
-      const italicVal = overrides.italic ?? piece.italic
+      // italic: explicit override > default_run
+      const italicVal = overrides.italic ?? piece.italic ?? defaultRun.italic
       if (italicVal) el.italic = true
 
-      // size: half-points → pt
+      // size: half-points → pt; explicit override > default_run > style default
       const sizeVal = overrides.size ?? piece.size
       if (sizeVal !== undefined) {
         el.size = sizeVal / 2
@@ -78,12 +96,12 @@ export function aiwordToCanvas(aiView) {
         el.size = defaultSize / 2
       }
 
-      // color
-      const colorVal = overrides.color ?? piece.color
-      if (colorVal) el.color = colorVal
+      // color: explicit override > default_run; normalize bare hex ("FF0000" → "#FF0000")
+      const colorVal = overrides.color ?? piece.color ?? defaultRun.color
+      if (colorVal) el.color = normalizeColor(colorVal)
 
-      // font
-      const fontVal = overrides.font_ascii ?? piece.font_ascii
+      // font: explicit override > default_run
+      const fontVal = overrides.font_ascii ?? piece.font_ascii ?? defaultRun.font_ascii
       if (fontVal) el.font = fontVal
 
       el.rowFlex = rowFlex
@@ -94,6 +112,7 @@ export function aiwordToCanvas(aiView) {
     elements.push({ value: '\n', rowFlex })
   }
 
+  console.log('[aiwordToCanvas] output elements:', elements.length)
   return { main: elements, header: [], footer: [] }
 }
 

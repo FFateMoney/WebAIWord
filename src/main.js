@@ -194,9 +194,15 @@ btnCompile.addEventListener('click', () => {
     return
   }
   try {
+    const body = state.lastAiJson?.document?.body ?? []
+    console.log('[Compile] lastAiJson paragraphs:', body.length, 'preview:', JSON.stringify(body[0] ?? {}).slice(0, 200))
     const canvasData = aiwordToCanvas(state.lastAiJson)
+    const elementCount = canvasData.main?.length ?? 0
+    console.log('[Compile] canvasData elements:', elementCount, 'sample:', JSON.stringify(canvasData.main?.[0] ?? {}).slice(0, 200))
     state.editor.command.executeSetValue(canvasData)
-    appendMessage('system', '✅ AI 内容已编译到文档')
+    // Explicitly re-render to ensure the canvas reflects the new data
+    state.editor.command.executeForceUpdate()
+    appendMessage('system', `✅ AI 内容已编译到文档（${body.length} 段落 → ${elementCount} 元素）`)
   } catch (err) {
     appendMessage('system', `❌ 编译失败：${err.message}`)
     console.error(err)
