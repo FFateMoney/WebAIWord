@@ -236,9 +236,12 @@ export class AIPatchService {
       throw new Error('当前文档结构不合法：缺少 document.body')
     }
 
-    for (const opItem of normalizedEnvelope.operations) {
+    for (let i = 0; i < normalizedEnvelope.operations.length; i++) {
+      const opItem = normalizedEnvelope.operations[i]
       const op = opItem?.op
-      if (!op) throw new Error('patch 操作缺少 op 字段')
+      if (!op) {
+        throw new Error(`patch 操作缺少 op 字段（operations[${i}]）。每个操作都必须包含 op，例如 insert_after_id / update_by_id / replace`)
+      }
 
       if (op === 'add' || op === 'replace') {
         setByPointer(next, opItem.path, opItem.value, op)

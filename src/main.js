@@ -85,6 +85,8 @@ function syncDocumentToAIContext() {
 3) 禁止修改系统字段：document.meta、id、createdAt、updatedAt、version。
 4) 所有颜色字段（如 overrides.color）必须使用 CSS 十六进制格式 "#RRGGBB"。
 5) 涉及段落插入/替换时，Paragraph 节点必须包含 type、id、style、alignment、content。
+6) operations 数组里的每一项都必须显式包含 op 字段，禁止省略。
+7) 当需求是“添加小标题/标题段落”时，优先使用 insert_after_id 或 insert_before_id，并提供 target_id + value。
 
 当前文档（只读）：
 ${JSON.stringify(state.currentAiView, null, 2)}`,
@@ -136,6 +138,7 @@ function buildPatchRepairPrompt(previousResponse, errorMessage) {
 3) operations 必须是数组；每一项都必须有字符串字段 op。
 4) 若使用按段落 id 的操作（insert_after_id / insert_before_id / replace_by_id / update_by_id），必须使用 target_id（snake_case），不要用 targetId。
 5) 只输出最小必要修改，且可被直接执行。
+6) 当用户要求“添加小标题”时，通常应新增段落（insert_after_id / insert_before_id），而不是漏写 op。
 
 你上一条原始回复（仅供修复）：
 ${previousResponse}`
