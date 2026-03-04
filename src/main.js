@@ -157,16 +157,7 @@ fileInput.addEventListener('change', async (e) => {
 btnUpdateAI.addEventListener('click', () => {
   try {
     const canvasData = state.editor.command.getValue()
-    const newAiView = canvasToAiword(canvasData, state.currentAiView)
-    // Guard: canvasToAiword is not fully implemented; if it produced an empty body
-    // but the existing aiView has content, preserve the original body to avoid
-    // sending an empty document to the AI.
-    const newBody = newAiView?.document?.body ?? []
-    const oldBody = state.currentAiView?.document?.body ?? []
-    if (newBody.length === 0 && oldBody.length > 0 && newAiView?.document) {
-      console.warn('[UpdateAI] canvasToAiword produced empty body; preserving existing body to prevent data loss.')
-      newAiView.document.body = oldBody
-    }
+    const newAiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
     state.currentAiView = newAiView
     // Update or insert system prompt in chat history
     const systemPrompt = {
@@ -219,7 +210,7 @@ btnExport.addEventListener('click', async () => {
   appendMessage('system', '💾 正在导出文档...')
   try {
     const canvasData = state.editor.command.getValue()
-    const aiView = canvasToAiword(canvasData, state.currentAiView)
+    const aiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
     const { docxBytes } = await state.pyodide.render(state.fullAst, aiView)
     const blob = new Blob([docxBytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
     const url = URL.createObjectURL(blob)
