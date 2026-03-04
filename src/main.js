@@ -36,6 +36,7 @@ const btnClearCache = document.getElementById('btn-clear-cache')
 const selectProvider = document.getElementById('select-provider')
 const labelBaseUrl   = document.getElementById('label-baseurl')
 const chatMessages   = document.getElementById('chat-messages')
+const PATCH_REPAIR_MAX_RETRIES = 2
 
 // ─── Progress helpers ────────────────────────────────────────────────────────
 function setProgress(percent, text = '') {
@@ -118,6 +119,48 @@ function appendMessage(role, text) {
   bubble.textContent = text
   chatMessages.appendChild(bubble)
   chatMessages.scrollTop = chatMessages.scrollHeight
+}
+
+function buildPatchRepairPrompt(previousResponse, errorMessage) {
+  return `你上一次返回的 patch JSON 结构有误，导致系统无法应用。
+
+错误信息：${errorMessage}
+
+请严格按以下要求重新输出：
+1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要任何解释文本。
+2) 返回对象必须包含：
+{
+  "protocol": "aiword.patch.v1",
+  "operations": [
+    { "op": "...", "path/target_id/value/...": "..." }
+  ]
+}
+3) operations 中每一项必须有 op 字段；按段落 id 的操作必须使用 target_id（snake_case）。
+4) 只输出最小必要修改。
+
+你上一条返回（仅供修复参考）：
+${previousResponse}`
+}
+
+function applyAiResponseText(text) {
+  const json = state.ai.extractJSON(text)
+  if (!json) {
+    throw new Error('AI 返回内容不是合法 JSON')
+  }
+
+  if (state.patch.isPatchEnvelope(json)) {
+    const compiled = state.patch.applyPatch(state.currentAiView, json)
+    state.lastAiJson = compiled
+    appendMessage('system', `✅ 检测到 Patch（${json.operations.length} 条操作），正在自动编译到文档...`)
+  } else if (state.patch.isAiView(json)) {
+    state.lastAiJson = json
+    appendMessage('system', '⚠️ 检测到完整 JSON（旧模式），将自动编译到文档；建议改用 patch 输出')
+  } else {
+    throw new Error('AI 返回了 JSON，但不是 patch 协议或 ai_view 文档')
+  }
+
+  compileLastAiJsonToDocument()
+  appendMessage('system', '✅ AI 内容已自动编译到文档')
 }
 
 // ─── canvas-editor 初始化 ────────────────────────────────────────────────────
@@ -272,25 +315,36 @@ async function sendMessage() {
     }
     state.chatHistory.push({ role: 'assistant', content: fullText })
 
-    // Try to extract JSON from the response
-    const json = state.ai.extractJSON(fullText)
-    if (json) {
-      if (state.patch.isPatchEnvelope(json)) {
-        const compiled = state.patch.applyPatch(state.currentAiView, json)
-        state.lastAiJson = compiled
-        appendMessage('system', `✅ 检测到 Patch（${json.operations.length} 条操作），正在自动编译到文档...`)
-      } else if (state.patch.isAiView(json)) {
-        state.lastAiJson = json
-        appendMessage('system', '⚠️ 检测到完整 JSON（旧模式），将自动编译到文档；建议改用 patch 输出')
-      } else {
-        throw new Error('AI 返回了 JSON，但不是 patch 协议或 ai_view 文档')
-      }
+    let aiTextToApply = fullText
+    for (let attempt = 0; attempt <= PATCH_REPAIR_MAX_RETRIES; attempt++) {
+      try {
+        applyAiResponseText(aiTextToApply)
+        if (attempt > 0) {
+          appendMessage('system', '✅ AI 已根据反馈自动修复结构并成功应用')
+        }
+        break
+      } catch (applyErr) {
+        if (attempt >= PATCH_REPAIR_MAX_RETRIES) {
+          throw applyErr
+        }
 
-      compileLastAiJsonToDocument()
-      appendMessage('system', '✅ AI 内容已自动编译到文档')
+        appendMessage('system', `⚠️ AI 输出结构异常，正在自动反馈并重试（${attempt + 1}/${PATCH_REPAIR_MAX_RETRIES}）`)
+        const repairPrompt = buildPatchRepairPrompt(aiTextToApply, applyErr.message)
+        state.chatHistory.push({ role: 'user', content: repairPrompt })
+
+        aiBubble.textContent = ''
+        let repairedText = ''
+        for await (const token of state.ai.streamChat(state.chatHistory)) {
+          repairedText += token
+          aiBubble.textContent = repairedText
+          chatMessages.scrollTop = chatMessages.scrollHeight
+        }
+        state.chatHistory.push({ role: 'assistant', content: repairedText })
+        aiTextToApply = repairedText
+      }
     }
   } catch (err) {
-    aiBubble.textContent = `❌ 错误：${err.message}`
+    aiBubble.textContent = '❌ AI 返回结构仍不合法，已终止本次应用。请重试或调整提示词。'
     aiBubble.style.color = '#dc2626'
     console.error(err)
   } finally {
