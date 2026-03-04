@@ -207,15 +207,12 @@ fileInput.addEventListener('change', async (e) => {
 })
 
 btnExport.addEventListener('click', async () => {
-  if (!state.fullAst) {
-    appendMessage('system', '⚠️ 请先导入一个 .docx 文档')
-    return
-  }
   appendMessage('system', '💾 正在导出文档...')
   try {
     const canvasData = state.editor.command.getValue()
     const aiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
-    const { docxBytes } = await state.pyodide.render(state.fullAst, aiView)
+    const baseAst = state.fullAst ?? aiView
+    const { docxBytes } = await state.pyodide.render(baseAst, aiView)
     const blob = new Blob([docxBytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
