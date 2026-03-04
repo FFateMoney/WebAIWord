@@ -45,7 +45,8 @@ export function aiwordToCanvas(aiView) {
   const body = aiView?.document?.body ?? []
 
   for (const block of body) {
-    if (block.type !== 'Paragraph') continue
+    const blockType = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    if (blockType && blockType !== 'paragraph') continue
 
     // Support both real format (paragraph_format.alignment) and simplified format (block.alignment)
     const alignment = block.paragraph_format?.alignment ?? block.alignment ?? 'left'
@@ -53,12 +54,23 @@ export function aiwordToCanvas(aiView) {
     const styleDefaults = HEADING_STYLE_MAP[block.style] ?? HEADING_STYLE_MAP.Normal
     const defaultRun = block.default_run ?? {}
 
-    for (const piece of block.content ?? []) {
+    const runList = Array.isArray(block.content)
+      ? block.content
+      : (Array.isArray(block.runs)
+        ? block.runs
+        : (typeof block.text === 'string' ? [block.text] : []))
+
+    for (const rawPiece of runList) {
+      const piece = typeof rawPiece === 'string'
+        ? { type: 'Text', text: rawPiece }
+        : rawPiece
+
       // Handle real format (type: 'Text', overrides) and simplified format (direct fields)
-      if (piece.type !== undefined && piece.type !== 'Text') continue
+      const pieceType = typeof piece?.type === 'string' ? piece.type.toLowerCase() : ''
+      if (pieceType && pieceType !== 'text') continue
 
       const overrides = piece.overrides ?? {}
-      const el = { value: piece.text ?? '' }
+      const el = { value: piece?.text ?? piece?.value ?? '' }
 
       // bold: explicit override > default_run > style default
       const boldVal = overrides.bold ?? piece.bold
