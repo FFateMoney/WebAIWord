@@ -80,7 +80,9 @@ export function aiwordToCanvas(aiView) {
 
       // color
       const colorVal = overrides.color ?? piece.color ?? defaultRun.color
-      if (colorVal) el.color = colorVal
+      if (colorVal && typeof colorVal === 'string') {
+        el.color = colorVal.startsWith('#') ? colorVal : `#${colorVal}`
+      }
 
       // font
       const fontVal = overrides.font_ascii ?? piece.font_ascii ?? defaultRun.font_ascii

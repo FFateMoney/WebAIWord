@@ -114,10 +114,12 @@ def _apply_run_overrides(run, overrides: dict) -> None:
         size_pt = half_points_to_pt(overrides["size"])
         if size_pt is not None:
             run.font.size = Pt(size_pt)
-    if "color" in overrides and overrides["color"].startswith("#"):
-        hex_color = overrides["color"][1:]
-        if len(hex_color) == 6:
-            run.font.color.rgb = RGBColor.from_string(hex_color)
+    if "color" in overrides:
+        raw_color = overrides["color"]
+        if isinstance(raw_color, str):
+            hex_color = raw_color[1:] if raw_color.startswith("#") else raw_color
+            if len(hex_color) == 6:
+                run.font.color.rgb = RGBColor.from_string(hex_color)
     if overrides.get("font_ascii"):
         run.font.name = overrides["font_ascii"]
     if overrides.get("font_east_asia"):
