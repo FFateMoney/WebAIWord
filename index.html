@@ -63,6 +63,7 @@
   <div id="modal-apikey" class="modal hidden">
     <div class="modal-content">
       <h3>配置 AI API</h3>
+      <p class="modal-notice">⚠️ API Key 将保存在本地浏览器 localStorage 中，请勿在公共设备上使用。</p>
       <label>Provider
         <select id="select-provider">
           <option value="openai">OpenAI</option>
@@ -81,6 +82,7 @@
       </label>
       <div class="modal-actions">
         <button id="btn-save-apikey">保存</button>
+        <button id="btn-clear-cache">清除本地缓存</button>
         <button id="btn-close-modal">取消</button>
       </div>
     </div>
