@@ -195,7 +195,15 @@ btnCompile.addEventListener('click', () => {
   }
   try {
     const canvasData = aiwordToCanvas(state.lastAiJson)
+    const bodyLen = (state.lastAiJson?.document?.body ?? []).length
+    const elemLen = canvasData.main?.length ?? 0
+    console.log(`[Compile] ai_view body 段落数: ${bodyLen}，转换 elements 数: ${elemLen}`, (canvasData.main ?? []).slice(0, 3))
+    if (bodyLen > 0 && elemLen === 0) {
+      appendMessage('system', '⚠️ 编译结果为空，ai_view body 有内容但转换失败，请检查段落格式')
+      return
+    }
     state.editor.command.executeSetValue(canvasData)
+    state.currentAiView = state.lastAiJson
     appendMessage('system', '✅ AI 内容已编译到文档')
   } catch (err) {
     appendMessage('system', `❌ 编译失败：${err.message}`)
