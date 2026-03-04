@@ -122,7 +122,7 @@ fileInput.addEventListener('change', async (e) => {
     state.fullAst = fullAst
     state.currentAiView = aiView
     const canvasData = aiwordToCanvas(aiView)
-    state.editor.setValue(canvasData)
+    state.editor.command.executeSetValue(canvasData)
     appendMessage('system', `✅ 文档解析完成：${file.name}（${(aiView?.document?.body ?? []).length} 个段落）`)
   } catch (err) {
     appendMessage('system', `❌ 解析失败：${err.message}`)
@@ -133,7 +133,7 @@ fileInput.addEventListener('change', async (e) => {
 // ─── 其他按钮 ────────────────────────────────────────────────────────────────
 btnUpdateAI.addEventListener('click', () => {
   try {
-    const canvasData = state.editor.getValue()
+    const canvasData = state.editor.command.getValue()
     state.currentAiView = canvasToAiword(canvasData, state.currentAiView)
     // Update or insert system prompt in chat history
     const systemPrompt = {
@@ -162,7 +162,7 @@ btnCompile.addEventListener('click', () => {
   }
   try {
     const canvasData = aiwordToCanvas(state.lastAiJson)
-    state.editor.setValue(canvasData)
+    state.editor.command.executeSetValue(canvasData)
     appendMessage('system', '✅ AI 内容已编译到文档')
   } catch (err) {
     appendMessage('system', `❌ 编译失败：${err.message}`)
@@ -177,7 +177,7 @@ btnExport.addEventListener('click', async () => {
   }
   appendMessage('system', '💾 正在导出文档...')
   try {
-    const canvasData = state.editor.getValue()
+    const canvasData = state.editor.command.getValue()
     const aiView = canvasToAiword(canvasData, state.currentAiView)
     const { docxBytes } = await state.pyodide.render(state.fullAst, aiView)
     const blob = new Blob([docxBytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
