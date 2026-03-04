@@ -115,7 +115,7 @@ export function canvasToAiword(canvasData, originalAiView) {
 
   for (const el of elements) {
     // Skip non-text element types (images, tables, etc.)
-    if (el.type && el.type !== 'TEXT' && el.value !== '\n') continue
+    if (el.type && el.type !== 'text' && el.value !== '\n') continue
 
     if (el.value === '\n') {
       const originalPara = originalBody[paraIndex]
