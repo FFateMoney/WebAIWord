@@ -138,6 +138,29 @@ function mergeObject(target, partial) {
   }
 }
 
+function normalizeUpdateFields(opItem) {
+  if (opItem?.fields && typeof opItem.fields === 'object' && !Array.isArray(opItem.fields)) {
+    return opItem.fields
+  }
+
+  if (opItem?.value && typeof opItem.value === 'object' && !Array.isArray(opItem.value)) {
+    return opItem.value
+  }
+
+  if (typeof opItem?.fields === 'string') {
+    try {
+      const parsed = JSON.parse(opItem.fields)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed
+      }
+    } catch {
+      // noop: fallback to the original validation error below
+    }
+  }
+
+  return opItem?.fields
+}
+
 export class AIPatchService {
   isPatchEnvelope(obj) {
     return !!obj && typeof obj === 'object' && obj.protocol === 'aiword.patch.v1' && Array.isArray(obj.operations)
@@ -175,7 +198,7 @@ export class AIPatchService {
         body[idx] = opItem.value
       } else if (op === 'update_by_id') {
         const idx = findTargetIndexOrThrow(next, opItem)
-        mergeObject(body[idx], opItem.fields)
+        mergeObject(body[idx], normalizeUpdateFields(opItem))
       } else {
         throw new Error(`不支持的 patch op: ${op}`)
       }
