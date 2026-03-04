@@ -112,6 +112,23 @@ function findBlockIndexById(doc, blockId) {
   return body.findIndex(block => block?.id === blockId)
 }
 
+function resolveTargetId(opItem) {
+  return opItem?.target_id ?? opItem?.targetId ?? opItem?.id ?? null
+}
+
+function findTargetIndexOrThrow(doc, opItem) {
+  const targetId = resolveTargetId(opItem)
+  if (!targetId) {
+    throw new Error(`patch 操作 ${opItem?.op ?? '(unknown)'} 缺少 target_id`)
+  }
+
+  const idx = findBlockIndexById(doc, targetId)
+  if (idx < 0) {
+    throw new Error(`未找到目标段落 id: ${targetId}`)
+  }
+  return idx
+}
+
 function mergeObject(target, partial) {
   if (!partial || typeof partial !== 'object' || Array.isArray(partial)) {
     throw new Error('update_by_id 的 fields 必须是对象')
@@ -150,17 +167,14 @@ export class AIPatchService {
       } else if (op === 'remove') {
         removeByPointer(next, opItem.path)
       } else if (op === 'insert_after_id' || op === 'insert_before_id') {
-        const idx = findBlockIndexById(next, opItem.target_id)
-        if (idx < 0) throw new Error(`未找到目标段落 id: ${opItem.target_id}`)
+        const idx = findTargetIndexOrThrow(next, opItem)
         const insertIdx = op === 'insert_after_id' ? idx + 1 : idx
         body.splice(insertIdx, 0, opItem.value)
       } else if (op === 'replace_by_id') {
-        const idx = findBlockIndexById(next, opItem.target_id)
-        if (idx < 0) throw new Error(`未找到目标段落 id: ${opItem.target_id}`)
+        const idx = findTargetIndexOrThrow(next, opItem)
         body[idx] = opItem.value
       } else if (op === 'update_by_id') {
-        const idx = findBlockIndexById(next, opItem.target_id)
-        if (idx < 0) throw new Error(`未找到目标段落 id: ${opItem.target_id}`)
+        const idx = findTargetIndexOrThrow(next, opItem)
         mergeObject(body[idx], opItem.fields)
       } else {
         throw new Error(`不支持的 patch op: ${op}`)

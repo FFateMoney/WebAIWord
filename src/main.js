@@ -175,6 +175,7 @@ btnUpdateAI.addEventListener('click', () => {
     // 支持操作：
     // 1) RFC6902 子集：add / replace / remove（path 为 JSON Pointer）
     // 2) 按段落 id 的扩展：insert_after_id / insert_before_id / replace_by_id / update_by_id
+    //    上述操作必须提供 snake_case 字段 target_id（不要使用 targetId）
   ]
 }
 
