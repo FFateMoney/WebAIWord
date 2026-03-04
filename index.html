@@ -14,8 +14,6 @@
     <div class="toolbar-brand">📝 WebAIWord</div>
     <div class="toolbar-actions">
       <button id="btn-import" disabled title="导入 .docx 文档">导入 .docx</button>
-      <button id="btn-update-ai" disabled title="将当前文档内容同步到 AI 上下文">更新到 AI</button>
-      <button id="btn-compile" disabled title="将 AI 返回的 JSON 渲染到编辑器">编译到文档</button>
       <button id="btn-export" disabled title="导出为 .docx 文件">导出 .docx</button>
       <button id="btn-apikey" disabled title="配置 AI API Key">⚙️ API Key</button>
     </div>
@@ -43,7 +41,7 @@
       <div id="chat-messages">
         <div class="chat-welcome">
           <p>🤖 <strong>WebAIWord AI 助手</strong></p>
-          <p>请先导入 .docx 文档，然后点击「更新到 AI」将文档内容同步到此处，再开始对话。</p>
+          <p>请先导入 .docx 文档。每次点击发送后，系统会自动同步上下文并在 AI 成功返回后自动编译到文档。</p>
         </div>
       </div>
       <div id="chat-input-area">

@@ -23,8 +23,6 @@ const progressBar        = document.getElementById('progress-bar')
 const progressText       = document.getElementById('progress-text')
 
 const btnImport   = document.getElementById('btn-import')
-const btnUpdateAI = document.getElementById('btn-update-ai')
-const btnCompile  = document.getElementById('btn-compile')
 const btnExport   = document.getElementById('btn-export')
 const btnApiKey   = document.getElementById('btn-apikey')
 const btnSend     = document.getElementById('btn-send')
@@ -52,12 +50,65 @@ function hideProgress() {
 // ─── Enable all toolbar buttons ──────────────────────────────────────────────
 function enableToolbar() {
   btnImport.disabled   = false
-  btnUpdateAI.disabled = false
-  btnCompile.disabled  = false
   btnExport.disabled   = false
   btnApiKey.disabled   = false
   btnSend.disabled     = false
   chatInput.disabled   = false
+}
+
+function syncDocumentToAIContext() {
+  const canvasData = state.editor.command.getValue()
+  const newAiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
+  state.currentAiView = newAiView
+  // Update or insert system prompt in chat history
+  const systemPrompt = {
+    role: 'system',
+    content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。
+
+你的返回必须使用补丁协议 aiword.patch.v1，不允许返回完整文档。
+
+输出协议：
+{
+  "protocol": "aiword.patch.v1",
+  "operations": [
+    // 支持操作：
+    // 1) RFC6902 子集：add / replace / remove（path 为 JSON Pointer）
+    // 2) 按段落 id 的扩展：insert_after_id / insert_before_id / replace_by_id / update_by_id
+    //    上述操作必须提供 snake_case 字段 target_id（不要使用 targetId）
+  ]
+}
+
+规则：
+1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要附加解释文本。
+2) 只输出最小必要修改，未提及字段表示保持不变。
+3) 禁止修改系统字段：document.meta、id、createdAt、updatedAt、version。
+4) 所有颜色字段（如 overrides.color）必须使用 CSS 十六进制格式 "#RRGGBB"。
+5) 涉及段落插入/替换时，Paragraph 节点必须包含 type、id、style、alignment、content。
+
+当前文档（只读）：
+${JSON.stringify(state.currentAiView, null, 2)}`,
+  }
+  const sysIdx = state.chatHistory.findIndex(m => m.role === 'system')
+  if (sysIdx >= 0) {
+    state.chatHistory[sysIdx] = systemPrompt
+  } else {
+    state.chatHistory.unshift(systemPrompt)
+  }
+}
+
+function compileLastAiJsonToDocument() {
+  if (!state.lastAiJson) {
+    throw new Error('还没有 AI 返回的 JSON，请先发送消息')
+  }
+  const canvasData = aiwordToCanvas(state.lastAiJson)
+  const bodyLen = (state.lastAiJson?.document?.body ?? []).length
+  const elemLen = canvasData.main?.length ?? 0
+  console.log(`[Compile] ai_view body 段落数: ${bodyLen}，转换 elements 数: ${elemLen}`, (canvasData.main ?? []).slice(0, 3))
+  if (bodyLen > 0 && elemLen === 0) {
+    throw new Error('编译结果为空，ai_view body 有内容但转换失败，请检查段落格式')
+  }
+  state.editor.command.executeSetValue(canvasData)
+  state.currentAiView = state.lastAiJson
 }
 
 // ─── Chat helpers ────────────────────────────────────────────────────────────
@@ -155,78 +206,6 @@ fileInput.addEventListener('change', async (e) => {
   }
 })
 
-// ─── 其他按钮 ────────────────────────────────────────────────────────────────
-btnUpdateAI.addEventListener('click', () => {
-  try {
-    const canvasData = state.editor.command.getValue()
-    const newAiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
-    state.currentAiView = newAiView
-    // Update or insert system prompt in chat history
-    const systemPrompt = {
-      role: 'system',
-      content: `你是一个 Word 文档编辑助手。以下是当前文档的结构化内容（JSON 格式）。
-
-你的返回必须使用补丁协议 aiword.patch.v1，不允许返回完整文档。
-
-输出协议：
-{
-  "protocol": "aiword.patch.v1",
-  "operations": [
-    // 支持操作：
-    // 1) RFC6902 子集：add / replace / remove（path 为 JSON Pointer）
-    // 2) 按段落 id 的扩展：insert_after_id / insert_before_id / replace_by_id / update_by_id
-    //    上述操作必须提供 snake_case 字段 target_id（不要使用 targetId）
-  ]
-}
-
-规则：
-1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要附加解释文本。
-2) 只输出最小必要修改，未提及字段表示保持不变。
-3) 禁止修改系统字段：document.meta、id、createdAt、updatedAt、version。
-4) 所有颜色字段（如 overrides.color）必须使用 CSS 十六进制格式 "#RRGGBB"。
-5) 涉及段落插入/替换时，Paragraph 节点必须包含 type、id、style、alignment、content。
-
-当前文档（只读）：
-${JSON.stringify(state.currentAiView, null, 2)}`,
-    }
-    const sysIdx = state.chatHistory.findIndex(m => m.role === 'system')
-    if (sysIdx >= 0) {
-      state.chatHistory[sysIdx] = systemPrompt
-    } else {
-      state.chatHistory.unshift(systemPrompt)
-    }
-    chatInput.disabled = false
-    btnSend.disabled = false
-    appendMessage('system', '📋 文档内容已同步到 AI 上下文，可以开始对话了')
-  } catch (err) {
-    appendMessage('system', `❌ 同步失败：${err.message}`)
-    console.error(err)
-  }
-})
-
-btnCompile.addEventListener('click', () => {
-  if (!state.lastAiJson) {
-    appendMessage('system', '⚠️ 还没有 AI 返回的 JSON，请先发送消息')
-    return
-  }
-  try {
-    const canvasData = aiwordToCanvas(state.lastAiJson)
-    const bodyLen = (state.lastAiJson?.document?.body ?? []).length
-    const elemLen = canvasData.main?.length ?? 0
-    console.log(`[Compile] ai_view body 段落数: ${bodyLen}，转换 elements 数: ${elemLen}`, (canvasData.main ?? []).slice(0, 3))
-    if (bodyLen > 0 && elemLen === 0) {
-      appendMessage('system', '⚠️ 编译结果为空，ai_view body 有内容但转换失败，请检查段落格式')
-      return
-    }
-    state.editor.command.executeSetValue(canvasData)
-    state.currentAiView = state.lastAiJson
-    appendMessage('system', '✅ AI 内容已编译到文档')
-  } catch (err) {
-    appendMessage('system', `❌ 编译失败：${err.message}`)
-    console.error(err)
-  }
-})
-
 btnExport.addEventListener('click', async () => {
   if (!state.fullAst) {
     appendMessage('system', '⚠️ 请先导入一个 .docx 文档')
@@ -262,6 +241,16 @@ chatInput.addEventListener('keydown', (e) => {
 async function sendMessage() {
   const text = chatInput.value.trim()
   if (!text) return
+
+  try {
+    syncDocumentToAIContext()
+    appendMessage('system', '📋 已自动同步当前文档到 AI 上下文')
+  } catch (err) {
+    appendMessage('system', `❌ 自动同步失败：${err.message}`)
+    console.error(err)
+    return
+  }
+
   chatInput.value = ''
   appendMessage('user', text)
   state.chatHistory.push({ role: 'user', content: text })
@@ -292,23 +281,16 @@ async function sendMessage() {
       if (state.patch.isPatchEnvelope(json)) {
         const compiled = state.patch.applyPatch(state.currentAiView, json)
         state.lastAiJson = compiled
-        btnCompile.disabled = false
-        const notice = document.createElement('div')
-        notice.className = 'chat-bubble system'
-        notice.textContent = `✅ 检测到 Patch（${json.operations.length} 条操作），可点击「编译到文档」预览`
-        chatMessages.appendChild(notice)
-        chatMessages.scrollTop = chatMessages.scrollHeight
+        appendMessage('system', `✅ 检测到 Patch（${json.operations.length} 条操作），正在自动编译到文档...`)
       } else if (state.patch.isAiView(json)) {
         state.lastAiJson = json
-        btnCompile.disabled = false
-        const notice = document.createElement('div')
-        notice.className = 'chat-bubble system'
-        notice.textContent = '⚠️ 检测到完整 JSON（旧模式），仍可编译；建议改用 patch 输出'
-        chatMessages.appendChild(notice)
-        chatMessages.scrollTop = chatMessages.scrollHeight
+        appendMessage('system', '⚠️ 检测到完整 JSON（旧模式），将自动编译到文档；建议改用 patch 输出')
       } else {
         throw new Error('AI 返回了 JSON，但不是 patch 协议或 ai_view 文档')
       }
+
+      compileLastAiJsonToDocument()
+      appendMessage('system', '✅ AI 内容已自动编译到文档')
     }
   } catch (err) {
     aiBubble.textContent = `❌ 错误：${err.message}`
