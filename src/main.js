@@ -4,7 +4,7 @@ import { AIService } from './services/aiService.js'
 import { storageService } from './services/storageService.js'
 import { AIPatchService } from './services/aiPatchService.js'
 import { aiwordToCanvas, canvasToAiword } from './adapters/aiword-to-canvas.js'
-import { normalizeAiView, mergeParagraphsIntoAiView, extractParagraphBlocks } from './services/aiViewSchema.js'
+import { normalizeAiView, mergeEditableBlocksIntoAiView, extractEditableBlocks } from './services/aiViewSchema.js'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
@@ -103,7 +103,7 @@ function buildEditableAiView(fullAiView) {
     document: {
       meta: normalized.document.meta,
       styles: normalized.document.styles,
-      body: extractParagraphBlocks(normalized),
+      body: extractEditableBlocks(normalized),
     },
   }
 }
@@ -116,7 +116,7 @@ function getLatestCanonicalAiView() {
   )
 
   state.currentParagraphAiView = latestParagraphAiView
-  state.currentAiView = mergeParagraphsIntoAiView(state.currentAiView, latestParagraphAiView.document.body)
+  state.currentAiView = mergeEditableBlocksIntoAiView(state.currentAiView, latestParagraphAiView.document.body)
   return state.currentAiView
 }
 
@@ -608,7 +608,7 @@ async function initPyodide() {
           state.editor.command.executeSetValue(draft)
           state.currentParagraphAiView = canvasToAiword(draft.data ?? draft, state.currentParagraphAiView)
           if (state.currentAiView) {
-            state.currentAiView = mergeParagraphsIntoAiView(state.currentAiView, state.currentParagraphAiView.document.body)
+            state.currentAiView = mergeEditableBlocksIntoAiView(state.currentAiView, state.currentParagraphAiView.document.body)
           }
           appendMessage('system', '✅ 已恢复上次编辑内容')
         }

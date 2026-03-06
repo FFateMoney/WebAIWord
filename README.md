@@ -82,6 +82,7 @@ git push origin main
 - [数据流图](./docs/data-flow.md) — Mermaid 流程图，直观展示完整数据链路
 - [适配层规范](./docs/adapter-spec.md) — canvas-editor ↔ AIWord 双向转换详细规范
 - [AI Patch 协议](./docs/patch-protocol.md) — `aiword.patch.v1` 协议与示例
+- [表格与图片支持指南](./docs/table-image-support.md) — 如何从当前版本扩展到支持 Table / Image
 
 ---
 

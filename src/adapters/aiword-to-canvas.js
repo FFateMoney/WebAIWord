@@ -33,6 +33,29 @@ const HEADING_STYLE_MAP = {
   Normal: { size: 16, bold: false },
 }
 
+const TABLE_TOKEN_RE = /^\[AIWORD_TABLE:([^\]]+)\]$/
+const IMAGE_TOKEN_RE = /^\[AIWORD_IMAGE:([^:]+):(\d+)\]$/
+
+function createImageLookup(body) {
+  const map = new Map()
+  for (const block of body) {
+    const blockType = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    if (blockType && blockType !== 'paragraph') continue
+    const paraId = typeof block?.id === 'string' ? block.id : ''
+    if (!paraId) continue
+    const runList = Array.isArray(block?.content) ? block.content : []
+    let imageIndex = 0
+    for (const piece of runList) {
+      const pieceType = typeof piece?.type === 'string' ? piece.type.toLowerCase() : ''
+      if (pieceType === 'inlineimage') {
+        map.set(`${paraId}:${imageIndex}`, JSON.parse(JSON.stringify(piece)))
+        imageIndex += 1
+      }
+    }
+  }
+  return map
+}
+
 /**
  * Convert canonical AIView paragraphs to canvas-editor element array.
  * @param {object} aiView
@@ -44,6 +67,16 @@ export function aiwordToCanvas(aiView) {
 
   for (const block of body) {
     const blockType = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    if (blockType === 'table') {
+      elements.push({
+        value: `[AIWORD_TABLE:${block?.id ?? ''}]`,
+        color: '#6B7280',
+        italic: true,
+        rowFlex: 'left',
+      })
+      elements.push({ value: '\n', rowFlex: 'left' })
+      continue
+    }
     if (blockType && blockType !== 'paragraph') continue
 
     const alignment = block?.paragraph_format?.alignment ?? 'left'
@@ -52,8 +85,19 @@ export function aiwordToCanvas(aiView) {
     const defaultRun = block?.default_run && typeof block.default_run === 'object' ? block.default_run : {}
     const runList = Array.isArray(block?.content) ? block.content : []
 
+    let imageIndex = 0
     for (const piece of runList) {
       const pieceType = typeof piece?.type === 'string' ? piece.type.toLowerCase() : ''
+      if (pieceType === 'inlineimage') {
+        elements.push({
+          value: `[AIWORD_IMAGE:${block?.id ?? ''}:${imageIndex}]`,
+          color: '#6B7280',
+          italic: true,
+          rowFlex,
+        })
+        imageIndex += 1
+        continue
+      }
       if (pieceType && pieceType !== 'text') continue
 
       const overrides = piece?.overrides && typeof piece.overrides === 'object' ? piece.overrides : {}
@@ -101,6 +145,16 @@ export function aiwordToCanvas(aiView) {
 export function canvasToAiword(canvasData, originalParagraphAiView) {
   const elements = canvasData?.main ?? []
   const originalBody = originalParagraphAiView?.document?.body ?? []
+  const originalParagraphs = originalBody.filter((block) => {
+    const type = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    return !type || type === 'paragraph'
+  })
+  const originalTableById = new Map(
+    originalBody
+      .filter((block) => (typeof block?.type === 'string' ? block.type.toLowerCase() : '') === 'table' && typeof block?.id === 'string')
+      .map((block) => [block.id, JSON.parse(JSON.stringify(block))])
+  )
+  const imageLookup = createImageLookup(originalBody)
   const body = []
   let currentRuns = []
   let paraIndex = 0
@@ -108,12 +162,28 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
   let newParaCount = 0
 
   for (const el of elements) {
-    if (el.type && el.type !== 'text' && el.value !== '\n') continue
-
     if (el.value === '\n') {
-      const originalPara = originalBody[paraIndex]
+      if (
+        currentRuns.length === 1
+        && currentRuns[0]?.type === 'Text'
+        && typeof currentRuns[0]?.text === 'string'
+      ) {
+        const tableToken = currentRuns[0].text.match(TABLE_TOKEN_RE)
+        if (tableToken) {
+          const tableId = tableToken[1]
+          const originalTable = originalTableById.get(tableId)
+          if (originalTable) {
+            body.push(originalTable)
+            currentRuns = []
+            currentRowFlex = 'left'
+            continue
+          }
+        }
+      }
+
+      const originalPara = originalParagraphs[paraIndex]
       const id = originalPara?.id ?? (
-        paraIndex < originalBody.length ? `b${paraIndex}` : `new_${newParaCount++}`
+        paraIndex < originalParagraphs.length ? `b${paraIndex}` : `new_${newParaCount++}`
       )
       const alignment = REVERSE_ALIGNMENT_MAP[el.rowFlex ?? currentRowFlex] ?? 'left'
 
@@ -131,6 +201,17 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
     } else {
       if (el.rowFlex) currentRowFlex = el.rowFlex
 
+      const text = (el.value ?? '').replace(/\n/g, ' ')
+      const originalPara = originalParagraphs[paraIndex]
+      const imageToken = text.match(IMAGE_TOKEN_RE)
+      if (imageToken && originalPara?.id) {
+        const imagePiece = imageLookup.get(`${originalPara.id}:${Number(imageToken[2])}`)
+        if (imagePiece) {
+          currentRuns.push(imagePiece)
+          continue
+        }
+      }
+
       const overrides = {}
       if (el.bold !== undefined) overrides.bold = !!el.bold
       if (el.italic !== undefined) overrides.italic = !!el.italic
@@ -143,7 +224,7 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
 
       const run = {
         type: 'Text',
-        text: (el.value ?? '').replace(/\n/g, ' '),
+        text,
       }
       if (Object.keys(overrides).length > 0) run.overrides = overrides
       currentRuns.push(run)
@@ -151,7 +232,7 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
   }
 
   if (currentRuns.length > 0) {
-    const originalPara = originalBody[paraIndex]
+    const originalPara = originalParagraphs[paraIndex]
     body.push({
       type: 'Paragraph',
       id: originalPara?.id ?? `b${paraIndex}`,
