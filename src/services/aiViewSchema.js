@@ -141,3 +141,40 @@ export function extractParagraphBlocks(aiView) {
     return !type || type === 'paragraph'
   })
 }
+
+export function extractEditableBlocks(aiView) {
+  const normalized = normalizeAiView(aiView)
+  return normalized.document.body.filter((block) => {
+    const type = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    return !type || type === 'paragraph' || type === 'table'
+  })
+}
+
+export function mergeEditableBlocksIntoAiView(baseAiView, editableBlocks) {
+  const base = normalizeAiView(baseAiView)
+  const nextBlocks = Array.isArray(editableBlocks) ? editableBlocks.map((b) => deepClone(b)) : []
+
+  const newBody = []
+  let cursor = 0
+  for (const block of base.document.body) {
+    const type = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
+    if (!type || type === 'paragraph' || type === 'table') {
+      if (cursor < nextBlocks.length) {
+        newBody.push(nextBlocks[cursor++])
+      }
+    } else {
+      newBody.push(deepClone(block))
+    }
+  }
+
+  while (cursor < nextBlocks.length) {
+    newBody.push(nextBlocks[cursor++])
+  }
+
+  return {
+    document: {
+      ...base.document,
+      body: newBody,
+    },
+  }
+}
