@@ -1,11 +1,9 @@
 /**
- * Bidirectional format adapter between AIWord ai_view and canvas-editor elements.
- * Implements the spec from docs/adapter-spec.md.
- *
- * The actual ai_view format from the Python parser uses:
- *   - block.paragraph_format.alignment  (not block.alignment)
- *   - piece.overrides.{bold, italic, size, color, font_ascii}  (not direct on piece)
- *   - piece.type === 'Text'
+ * Bidirectional format adapter between canonical AIView and canvas-editor elements.
+ * Canonical rules:
+ * - Paragraph alignment: block.paragraph_format.alignment
+ * - Text styling: piece.overrides.{bold, italic, size, color, font_ascii}
+ * - Text run: piece.type === 'Text'
  */
 
 const ALIGNMENT_MAP = {
@@ -36,8 +34,8 @@ const HEADING_STYLE_MAP = {
 }
 
 /**
- * Convert AIWord ai_view to canvas-editor element array.
- * @param {object} aiView  — ai_view JSON from the Python to_ai_view() function
+ * Convert canonical AIView paragraphs to canvas-editor element array.
+ * @param {object} aiView
  * @returns {{ main: object[], header: [], footer: [] }}
  */
 export function aiwordToCanvas(aiView) {
@@ -48,41 +46,27 @@ export function aiwordToCanvas(aiView) {
     const blockType = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
     if (blockType && blockType !== 'paragraph') continue
 
-    // Support both real format (paragraph_format.alignment) and simplified format (block.alignment)
-    const alignment = block.paragraph_format?.alignment ?? block.alignment ?? 'left'
+    const alignment = block?.paragraph_format?.alignment ?? 'left'
     const rowFlex = ALIGNMENT_MAP[alignment] ?? 'left'
-    const styleDefaults = HEADING_STYLE_MAP[block.style] ?? HEADING_STYLE_MAP.Normal
-    const defaultRun = block.default_run ?? {}
+    const styleDefaults = HEADING_STYLE_MAP[block?.style] ?? HEADING_STYLE_MAP.Normal
+    const defaultRun = block?.default_run && typeof block.default_run === 'object' ? block.default_run : {}
+    const runList = Array.isArray(block?.content) ? block.content : []
 
-    const runList = Array.isArray(block.content)
-      ? block.content
-      : (Array.isArray(block.runs)
-        ? block.runs
-        : (typeof block.text === 'string' ? [block.text] : []))
-
-    for (const rawPiece of runList) {
-      const piece = typeof rawPiece === 'string'
-        ? { type: 'Text', text: rawPiece }
-        : rawPiece
-
-      // Handle real format (type: 'Text', overrides) and simplified format (direct fields)
+    for (const piece of runList) {
       const pieceType = typeof piece?.type === 'string' ? piece.type.toLowerCase() : ''
       if (pieceType && pieceType !== 'text') continue
 
-      const overrides = piece.overrides ?? {}
-      const el = { value: piece?.text ?? piece?.value ?? '' }
+      const overrides = piece?.overrides && typeof piece.overrides === 'object' ? piece.overrides : {}
+      const el = { value: piece?.text ?? '' }
 
-      // bold: explicit override > default_run > style default
-      const boldVal = overrides.bold ?? piece.bold
+      const boldVal = overrides.bold
       const effectiveBold = boldVal !== undefined ? boldVal : (defaultRun.bold ?? styleDefaults.bold)
       if (effectiveBold) el.bold = true
 
-      // italic
-      const italicVal = overrides.italic ?? piece.italic ?? defaultRun.italic
+      const italicVal = overrides.italic ?? defaultRun.italic
       if (italicVal) el.italic = true
 
-      // size: half-points → pt
-      const sizeVal = overrides.size ?? piece.size
+      const sizeVal = overrides.size
       if (sizeVal !== undefined) {
         el.size = sizeVal / 2
       } else {
@@ -90,21 +74,18 @@ export function aiwordToCanvas(aiView) {
         el.size = defaultSize / 2
       }
 
-      // color
-      const colorVal = overrides.color ?? piece.color ?? defaultRun.color
+      const colorVal = overrides.color ?? defaultRun.color
       if (colorVal && typeof colorVal === 'string') {
         el.color = colorVal.startsWith('#') ? colorVal : `#${colorVal}`
       }
 
-      // font
-      const fontVal = overrides.font_ascii ?? piece.font_ascii ?? defaultRun.font_ascii
+      const fontVal = overrides.font_ascii ?? defaultRun.font_ascii
       if (fontVal) el.font = fontVal
 
       el.rowFlex = rowFlex
       elements.push(el)
     }
 
-    // Paragraph separator
     elements.push({ value: '\n', rowFlex })
   }
 
@@ -112,15 +93,14 @@ export function aiwordToCanvas(aiView) {
 }
 
 /**
- * Convert canvas-editor elements back to AIWord ai_view format.
- * Preserves block ids from originalAiView where possible.
+ * Convert canvas-editor elements back to canonical AIView paragraph blocks.
  * @param {{ main: object[] }} canvasData
- * @param {object} [originalAiView]
- * @returns {object}  — ai_view compatible with merge_ai_edits()
+ * @param {object} [originalParagraphAiView]
+ * @returns {object}
  */
-export function canvasToAiword(canvasData, originalAiView) {
+export function canvasToAiword(canvasData, originalParagraphAiView) {
   const elements = canvasData?.main ?? []
-  const originalBody = originalAiView?.document?.body ?? []
+  const originalBody = originalParagraphAiView?.document?.body ?? []
   const body = []
   let currentRuns = []
   let paraIndex = 0
@@ -128,7 +108,6 @@ export function canvasToAiword(canvasData, originalAiView) {
   let newParaCount = 0
 
   for (const el of elements) {
-    // Skip non-text element types (images, tables, etc.)
     if (el.type && el.type !== 'text' && el.value !== '\n') continue
 
     if (el.value === '\n') {
@@ -155,7 +134,7 @@ export function canvasToAiword(canvasData, originalAiView) {
       const overrides = {}
       if (el.bold !== undefined) overrides.bold = !!el.bold
       if (el.italic !== undefined) overrides.italic = !!el.italic
-      if (el.size !== undefined) overrides.size = el.size * 2  // pt → half-points
+      if (el.size !== undefined) overrides.size = el.size * 2
       if (el.color !== undefined) overrides.color = el.color
       if (el.font !== undefined) overrides.font_ascii = el.font
 
@@ -168,7 +147,6 @@ export function canvasToAiword(canvasData, originalAiView) {
     }
   }
 
-  // Handle document that doesn't end with \n
   if (currentRuns.length > 0) {
     const originalPara = originalBody[paraIndex]
     body.push({
@@ -182,8 +160,8 @@ export function canvasToAiword(canvasData, originalAiView) {
 
   return {
     document: {
-      meta: originalAiView?.document?.meta ?? { page: { width: 12240, height: 15840 } },
-      styles: originalAiView?.document?.styles ?? {},
+      meta: originalParagraphAiView?.document?.meta ?? { page: { width: 12240, height: 15840 } },
+      styles: originalParagraphAiView?.document?.styles ?? {},
       body,
     },
   }

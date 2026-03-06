@@ -4,6 +4,7 @@ import { AIService } from './services/aiService.js'
 import { storageService } from './services/storageService.js'
 import { AIPatchService } from './services/aiPatchService.js'
 import { aiwordToCanvas, canvasToAiword } from './adapters/aiword-to-canvas.js'
+import { normalizeAiView, mergeParagraphsIntoAiView, extractParagraphBlocks } from './services/aiViewSchema.js'
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const state = {
@@ -13,6 +14,7 @@ const state = {
   editor: null,
   fullAst: null,
   currentAiView: null,
+  currentParagraphAiView: null,
   lastAiJson: null,
   chatHistory: [],
 }
@@ -63,10 +65,107 @@ function enableToolbar() {
   chatInput.disabled   = false
 }
 
-function syncDocumentToAIContext() {
+function buildEditableAiView(fullAiView) {
+  const normalized = normalizeAiView(fullAiView)
+  return {
+    document: {
+      meta: normalized.document.meta,
+      styles: normalized.document.styles,
+      body: extractParagraphBlocks(normalized),
+    },
+  }
+}
+
+function getLatestCanonicalAiView() {
   const canvasData = state.editor.command.getValue()
-  const newAiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
-  state.currentAiView = newAiView
+  const latestParagraphAiView = canvasToAiword(
+    canvasData.data ?? canvasData,
+    state.currentParagraphAiView,
+  )
+
+  state.currentParagraphAiView = latestParagraphAiView
+  state.currentAiView = mergeParagraphsIntoAiView(state.currentAiView, latestParagraphAiView.document.body)
+  return state.currentAiView
+}
+
+function buildCanonicalAiViewRules() {
+  return `你必须严格遵循下面这套唯一的 AI_VIEW 规则（canonical schema）：
+
+[A] Paragraph 结构（必须）
+- Paragraph 节点必须是：
+  {
+    "type": "Paragraph",
+    "id": "p1",
+    "style": "Normal",
+    "paragraph_format": {
+      "alignment": "left" // 仅允许 left|center|right|justify
+    },
+    "content": [ ... ]
+  }
+
+[B] Run 结构（必须）
+- content 中每个文本 run 必须是：
+  {
+    "type": "Text",
+    "text": "正文",
+    "overrides": {
+      "bold": true,
+      "italic": false,
+      "size": 24,
+      "color": "#112233",
+      "font_ascii": "Calibri"
+    }
+  }
+- overrides 字段按需提供，不改动的字段不要写。
+
+[C] 禁止使用的旧字段（严禁）
+- 段落顶层 alignment（错误）
+- block.runs / block.text（错误）
+- run 顶层 bold/italic/size/color/font_ascii（错误）
+- targetId（错误，必须用 target_id）
+
+[D] Patch 操作要求（必须）
+- 顶层必须是：
+  {
+    "protocol": "aiword.patch.v1",
+    "operations": [ ... ]
+  }
+- operations 每一项都必须有 op。
+- 允许 op：add / replace / remove / insert_after_id / insert_before_id / replace_by_id / update_by_id。
+
+[E] 安全与最小改动
+- 只输出最小必要修改。
+- 禁止改 document.meta、id、createdAt、updatedAt、version。
+- 颜色一律使用 #RRGGBB。`
+}
+
+function buildCanonicalPatchTemplate() {
+  return `输出格式模板（可直接仿照）：
+
+{
+  "protocol": "aiword.patch.v1",
+  "operations": [
+    {
+      "op": "update_by_id",
+      "target_id": "p1",
+      "fields": {
+        "content": [
+          {
+            "type": "Text",
+            "text": "更新后的正文",
+            "overrides": {
+              "color": "#1F2937"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}`
+}
+
+function syncDocumentToAIContext() {
+  const newAiView = getLatestCanonicalAiView()
   // Update or insert system prompt in chat history
   const systemPrompt = {
     role: 'system',
@@ -85,14 +184,14 @@ function syncDocumentToAIContext() {
   ]
 }
 
-规则：
+全局硬性要求：
 1) 只返回 JSON（可放在 \`\`\`json 代码块中），不要附加解释文本。
-2) 只输出最小必要修改，未提及字段表示保持不变。
-3) 禁止修改系统字段：document.meta、id、createdAt、updatedAt、version。
-4) 所有颜色字段（如 overrides.color）必须使用 CSS 十六进制格式 "#RRGGBB"。
-5) 涉及段落插入/替换时，Paragraph 节点必须包含 type、id、style、alignment、content。
-6) operations 数组里的每一项都必须显式包含 op 字段，禁止省略。
-7) 当需求是“添加小标题/标题段落”时，优先使用 insert_after_id 或 insert_before_id，并提供 target_id + value。
+2) 只输出可执行 patch，不要输出完整文档。
+3) 如需新增段落，优先使用 insert_after_id 或 insert_before_id。
+
+${buildCanonicalAiViewRules()}
+
+${buildCanonicalPatchTemplate()}
 
 当前文档（只读）：
 ${JSON.stringify(state.currentAiView, null, 2)}`,
@@ -109,21 +208,24 @@ function compileLastAiJsonToDocument() {
   if (!state.lastAiJson) {
     throw new Error('还没有 AI 返回的 JSON，请先发送消息')
   }
-  const canvasData = aiwordToCanvas(state.lastAiJson)
-  const bodyLen = (state.lastAiJson?.document?.body ?? []).length
+
+  state.currentAiView = normalizeAiView(state.lastAiJson)
+  state.currentParagraphAiView = buildEditableAiView(state.currentAiView)
+
+  const canvasData = aiwordToCanvas(state.currentParagraphAiView)
+  const bodyLen = (state.currentParagraphAiView?.document?.body ?? []).length
   const elemLen = canvasData.main?.length ?? 0
-  console.log(`[Compile] ai_view body 段落数: ${bodyLen}，转换 elements 数: ${elemLen}`, (canvasData.main ?? []).slice(0, 3))
+  console.log(`[Compile] ai_view 段落数: ${bodyLen}，转换 elements 数: ${elemLen}`, (canvasData.main ?? []).slice(0, 3))
   if (bodyLen > 0 && elemLen === 0) {
-    throw new Error('编译结果为空，ai_view body 有内容但转换失败，请检查段落格式')
+    throw new Error('编译结果为空，ai_view paragraph 有内容但转换失败，请检查段落格式')
   }
+
   state.editor.command.executeSetValue(canvasData)
-  state.currentAiView = state.lastAiJson
 }
 
 
 function getLatestAiView() {
-  const canvasData = state.editor.command.getValue()
-  return canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
+  return getLatestCanonicalAiView()
 }
 
 function showAiViewModal() {
@@ -163,7 +265,14 @@ function buildPatchRepairPrompt(previousResponse, errorMessage) {
 3) operations 必须是数组；每一项都必须有字符串字段 op。
 4) 若使用按段落 id 的操作（insert_after_id / insert_before_id / replace_by_id / update_by_id），必须使用 target_id（snake_case），不要用 targetId。
 5) 只输出最小必要修改，且可被直接执行。
-6) 当用户要求“添加小标题”时，通常应新增段落（insert_after_id / insert_before_id），而不是漏写 op。
+6) 段落对齐只能写在 paragraph_format.alignment，run 样式只能写在 overrides。
+7) 禁止使用旧字段：alignment（段落顶层）、runs、text（段落顶层）、run 顶层 bold/italic/size/color/font_ascii。
+
+以下是唯一允许的 schema 规则，请完全遵循：
+${buildCanonicalAiViewRules()}
+
+输出请尽量参考此模板：
+${buildCanonicalPatchTemplate()}
 
 你上一条原始回复（仅供修复）：
 ${previousResponse}`
@@ -192,10 +301,10 @@ function applyAiResponseText(text) {
 
   if (state.patch.isPatchEnvelope(json)) {
     const compiled = state.patch.applyPatch(state.currentAiView, json)
-    state.lastAiJson = compiled
+    state.lastAiJson = normalizeAiView(compiled)
     appendMessage('system', `✅ 检测到 Patch（${json.operations.length} 条操作），正在自动编译到文档...`)
   } else if (state.patch.isAiView(json)) {
-    state.lastAiJson = json
+    state.lastAiJson = normalizeAiView(json)
     appendMessage('system', '⚠️ 检测到完整 JSON（旧模式），将自动编译到文档；建议改用 patch 输出')
   } else {
     throw new Error('AI 返回了 JSON，但不是 patch 协议或 ai_view 文档')
@@ -298,8 +407,9 @@ fileInput.addEventListener('change', async (e) => {
     const docxBytes = new Uint8Array(arrayBuffer)
     const { fullAst, aiView } = await state.pyodide.parse(docxBytes)
     state.fullAst = fullAst
-    state.currentAiView = aiView
-    const canvasData = aiwordToCanvas(aiView)
+    state.currentAiView = normalizeAiView(aiView)
+    state.currentParagraphAiView = buildEditableAiView(state.currentAiView)
+    const canvasData = aiwordToCanvas(state.currentParagraphAiView)
     state.editor.command.executeSetValue(canvasData)
     storageService.saveDraft(canvasData)
     appendMessage('system', `✅ 文档解析完成：${file.name}（${(aiView?.document?.body ?? []).length} 个段落）`)
@@ -312,8 +422,7 @@ fileInput.addEventListener('change', async (e) => {
 btnExport.addEventListener('click', async () => {
   appendMessage('system', '💾 正在导出文档...')
   try {
-    const canvasData = state.editor.command.getValue()
-    const aiView = canvasToAiword(canvasData.data ?? canvasData, state.currentAiView)
+    const aiView = getLatestCanonicalAiView()
     const baseAst = state.fullAst ?? aiView
     const { docxBytes } = await state.pyodide.render(baseAst, aiView)
     const blob = new Blob([docxBytes], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
@@ -427,6 +536,10 @@ async function initPyodide() {
         const draft = storageService.loadDraft()
         if (draft) {
           state.editor.command.executeSetValue(draft)
+          state.currentParagraphAiView = canvasToAiword(draft.data ?? draft, state.currentParagraphAiView)
+          if (state.currentAiView) {
+            state.currentAiView = mergeParagraphsIntoAiView(state.currentAiView, state.currentParagraphAiView.document.body)
+          }
           appendMessage('system', '✅ 已恢复上次编辑内容')
         }
       }
