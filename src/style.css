@@ -61,6 +61,10 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-sans); }
   color: var(--color-toolbar-text);
   padding: 0 8px;
 }
+.toolbar-control option {
+  background: #ffffff;
+  color: #0f172a;
+}
 .toolbar-control:disabled {
   opacity: 0.4;
   cursor: not-allowed;
