@@ -32,7 +32,15 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-sans); }
   position: relative;
 }
 .toolbar-brand { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
-.toolbar-actions { display: flex; gap: 8px; }
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  overflow-x: auto;
+  max-width: calc(100vw - 180px);
+}
 .toolbar-actions button {
   padding: 6px 14px;
   border: 1px solid rgba(255,255,255,0.2);
@@ -45,6 +53,41 @@ html, body { height: 100%; overflow: hidden; font-family: var(--font-sans); }
 }
 .toolbar-actions button:hover:not(:disabled) { background: rgba(255,255,255,0.2); }
 .toolbar-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.toolbar-control {
+  height: 32px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  color: var(--color-toolbar-text);
+  padding: 0 8px;
+}
+.toolbar-control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.toolbar-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.1);
+  font-size: 12px;
+}
+.toolbar-color input[type='color'] {
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+.toolbar-color input[type='color']:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 
 /* ===== Progress Bar ===== */
 #progress-container {
