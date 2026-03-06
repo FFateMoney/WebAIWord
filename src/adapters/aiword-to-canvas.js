@@ -33,8 +33,38 @@ const HEADING_STYLE_MAP = {
   Normal: { size: 16, bold: false },
 }
 
-const TABLE_TOKEN_RE = /^\[AIWORD_TABLE:([^\]]+)\]$/
 const IMAGE_TOKEN_RE = /^\[AIWORD_IMAGE:([^:]+):(\d+)\]$/
+
+function twipsToPx(twips) {
+  if (typeof twips !== 'number' || Number.isNaN(twips) || twips <= 0) return undefined
+  return Math.max(1, Math.round(twips / 15))
+}
+
+function buildTablePreview(block) {
+  const rows = Array.isArray(block?.rows) ? block.rows : []
+  if (!rows.length) return '空表格'
+
+  const rowText = rows.map((row) => {
+    const cells = Array.isArray(row?.cells) ? row.cells : []
+    if (!cells.length) return ' '
+    return cells.map((cell) => {
+      const paragraphs = Array.isArray(cell?.paragraphs) ? cell.paragraphs : []
+      const text = paragraphs
+        .map((paragraph) => {
+          const pieces = Array.isArray(paragraph?.content) ? paragraph.content : []
+          return pieces
+            .filter((piece) => (typeof piece?.type === 'string' ? piece.type.toLowerCase() : '') === 'text')
+            .map((piece) => piece?.text ?? '')
+            .join('')
+        })
+        .join(' / ')
+        .trim()
+      return text || ' '
+    }).join(' | ')
+  })
+
+  return rowText.join('\n')
+}
 
 function createImageLookup(body) {
   const map = new Map()
@@ -68,11 +98,17 @@ export function aiwordToCanvas(aiView) {
   for (const block of body) {
     const blockType = typeof block?.type === 'string' ? block.type.toLowerCase() : ''
     if (blockType === 'table') {
+      const tableId = block?.id ?? ''
+      const preview = buildTablePreview(block)
       elements.push({
-        value: `[AIWORD_TABLE:${block?.id ?? ''}]`,
+        value: `[表格 ${tableId || '未命名'}]\n${preview}`,
         color: '#6B7280',
         italic: true,
         rowFlex: 'left',
+        extension: {
+          aiwordType: 'table',
+          tableId,
+        },
       })
       elements.push({ value: '\n', rowFlex: 'left' })
       continue
@@ -89,11 +125,19 @@ export function aiwordToCanvas(aiView) {
     for (const piece of runList) {
       const pieceType = typeof piece?.type === 'string' ? piece.type.toLowerCase() : ''
       if (pieceType === 'inlineimage') {
+        const imageWidth = twipsToPx(piece?.width)
+        const imageHeight = twipsToPx(piece?.height)
         elements.push({
-          value: `[AIWORD_IMAGE:${block?.id ?? ''}:${imageIndex}]`,
-          color: '#6B7280',
-          italic: true,
+          type: 'image',
+          value: `data:${piece?.content_type ?? 'image/png'};base64,${piece?.data ?? ''}`,
+          width: imageWidth,
+          height: imageHeight,
           rowFlex,
+          extension: {
+            aiwordType: 'inlineImage',
+            paragraphId: block?.id ?? '',
+            imageIndex,
+          },
         })
         imageIndex += 1
         continue
@@ -163,21 +207,14 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
 
   for (const el of elements) {
     if (el.value === '\n') {
-      if (
-        currentRuns.length === 1
-        && currentRuns[0]?.type === 'Text'
-        && typeof currentRuns[0]?.text === 'string'
-      ) {
-        const tableToken = currentRuns[0].text.match(TABLE_TOKEN_RE)
-        if (tableToken) {
-          const tableId = tableToken[1]
-          const originalTable = originalTableById.get(tableId)
-          if (originalTable) {
-            body.push(originalTable)
-            currentRuns = []
-            currentRowFlex = 'left'
-            continue
-          }
+      if (currentRuns.length === 1 && currentRuns[0]?.type === '__TABLE__') {
+        const tableId = currentRuns[0].tableId
+        const originalTable = originalTableById.get(tableId)
+        if (originalTable) {
+          body.push(originalTable)
+          currentRuns = []
+          currentRowFlex = 'left'
+          continue
         }
       }
 
@@ -200,6 +237,24 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
       currentRowFlex = 'left'
     } else {
       if (el.rowFlex) currentRowFlex = el.rowFlex
+
+      const extension = el?.extension && typeof el.extension === 'object' ? el.extension : null
+      if (extension?.aiwordType === 'table' && typeof extension?.tableId === 'string') {
+        currentRuns.push({ type: '__TABLE__', tableId: extension.tableId })
+        continue
+      }
+
+      if (el?.type === 'image' && extension?.aiwordType === 'inlineImage') {
+        const paraId = typeof extension?.paragraphId === 'string' ? extension.paragraphId : ''
+        const imageIndex = Number(extension?.imageIndex)
+        if (paraId && Number.isInteger(imageIndex)) {
+          const imagePiece = imageLookup.get(`${paraId}:${imageIndex}`)
+          if (imagePiece) {
+            currentRuns.push(imagePiece)
+            continue
+          }
+        }
+      }
 
       const text = (el.value ?? '').replace(/\n/g, ' ')
       const originalPara = originalParagraphs[paraIndex]
