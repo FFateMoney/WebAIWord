@@ -52,7 +52,7 @@ export class AIService {
 
   /**
    * Normalize a custom OpenAI-compatible URL.
-   * Accepts host-only, /v1, or full /chat/completions paths.
+   * Accepts host-only, /v1, /v1beta, /openai, or full /chat/completions paths.
    * @param {string} baseUrl
    * @returns {string}
    */
@@ -64,7 +64,13 @@ export class AIService {
 
     normalized = normalized.replace(/\/$/, '')
     if (/\/chat\/completions$/i.test(normalized)) return normalized
-    if (/\/v\d+$/i.test(normalized)) return `${normalized}/chat/completions`
+
+    // Supports versions like /v1, /v2, /v1beta, /v1alpha, etc.
+    if (/\/v\d[\w.-]*$/i.test(normalized)) return `${normalized}/chat/completions`
+
+    // Gemini OpenAI-compatible path often uses /v1beta/openai as the base.
+    if (/\/openai$/i.test(normalized)) return `${normalized}/chat/completions`
+
     return `${normalized}/v1/chat/completions`
   }
 
