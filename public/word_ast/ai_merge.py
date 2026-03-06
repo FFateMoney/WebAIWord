@@ -12,7 +12,8 @@ Renderer can preserve both round-trip fidelity and AI-requested edits.
 - XML 解析失败时：删除对应 _raw_* 让 Renderer 走结构化路径（降级）
   XML parse failure: drop _raw_* so Renderer falls back to structural fields.
 
-Block matching is by ``id``; run matching is positional.
+Block matching is by ``id``. Paragraph content is rebuilt from AI content,
+while preserving existing ``_raw_*`` data for matched text runs when possible.
 """
 import copy
 
@@ -51,27 +52,43 @@ def merge_ai_edits(original_ast: dict, ai_ast: dict) -> dict:
     the Renderer produces a document that reflects both the original
     formatting fidelity and any AI-requested edits.
 
-    Block matching is by the ``id`` key; run (content item) matching is
-    positional within each paragraph's ``content`` list.
+    Block matching is by the ``id`` key. The output body order follows AI
+    input order, so insert/delete/reorder of paragraphs are respected.
     """
     result = copy.deepcopy(original_ast)
 
+    result_doc = result.setdefault("document", {})
+    orig_body = result_doc.get("body", [])
     ai_body = ai_ast.get("document", {}).get("body", [])
-    ai_by_id = {
-        b["id"]: b
-        for b in ai_body
-        if isinstance(b, dict) and "id" in b
+    if not isinstance(orig_body, list) or not isinstance(ai_body, list):
+        return result
+
+    orig_by_id = {
+        block.get("id"): block
+        for block in orig_body
+        if isinstance(block, dict) and block.get("id") is not None
     }
 
-    for orig_block in result.get("document", {}).get("body", []):
-        if not isinstance(orig_block, dict):
+    merged_body = []
+    for ai_block in ai_body:
+        if not isinstance(ai_block, dict):
+            merged_body.append(copy.deepcopy(ai_block))
             continue
-        block_id = orig_block.get("id")
-        if block_id not in ai_by_id:
-            continue
-        ai_block = ai_by_id[block_id]
-        if orig_block.get("type") == "Paragraph":
-            _merge_paragraph_block(orig_block, ai_block)
+
+        block_id = ai_block.get("id")
+        orig_block = orig_by_id.get(block_id) if block_id is not None else None
+
+        if isinstance(orig_block, dict):
+            merged_block = copy.deepcopy(orig_block)
+            if merged_block.get("type") == "Paragraph" and ai_block.get("type") == "Paragraph":
+                _merge_paragraph_block(merged_block, ai_block)
+            else:
+                merged_block = copy.deepcopy(ai_block)
+            merged_body.append(merged_block)
+        else:
+            merged_body.append(copy.deepcopy(ai_block))
+
+    result_doc["body"] = merged_body
 
     return result
 
@@ -91,29 +108,62 @@ def _merge_paragraph_block(orig_block: dict, ai_block: dict) -> None:
     elif "paragraph_format" in orig_block:
         del orig_block["paragraph_format"]
 
-    # --- Merge content items (runs matched by position) ---
-    orig_content = orig_block.get("content", [])
-    ai_content = ai_block.get("content", [])
-    for i, orig_piece in enumerate(orig_content):
-        if i >= len(ai_content):
-            break
-        ai_piece = ai_content[i]
-        if orig_piece.get("type") != "Text" or ai_piece.get("type") != "Text":
+    # --- Merge basic block fields ---
+    for key in ("style", "default_run"):
+        if key in ai_block:
+            orig_block[key] = copy.deepcopy(ai_block[key])
+
+    # --- Rebuild content (respect insert/delete/reorder) ---
+    orig_block["content"] = _merge_paragraph_content(
+        orig_block.get("content", []),
+        ai_block.get("content", []),
+    )
+
+
+def _merge_paragraph_content(orig_content: list, ai_content: list) -> list:
+    """Rebuild paragraph content from AI content with best-effort raw preservation."""
+    if not isinstance(ai_content, list):
+        return copy.deepcopy(orig_content) if isinstance(orig_content, list) else []
+
+    if not isinstance(orig_content, list):
+        orig_content = []
+
+    merged_content = []
+    for idx, ai_piece in enumerate(ai_content):
+        if not isinstance(ai_piece, dict):
+            merged_content.append(copy.deepcopy(ai_piece))
             continue
 
-        # Update text if changed
-        ai_text = ai_piece.get("text")
-        if ai_text is not None and orig_piece.get("text") != ai_text:
-            orig_piece["text"] = ai_text
+        piece_type = ai_piece.get("type")
+        if piece_type != "Text":
+            merged_content.append(copy.deepcopy(ai_piece))
+            continue
 
-        # Merge run-level overrides
-        orig_ov = orig_piece.get("overrides", {})
+        orig_piece = orig_content[idx] if idx < len(orig_content) else None
+        merged_piece = copy.deepcopy(ai_piece)
+        merged_piece["type"] = "Text"
+        merged_piece["text"] = ai_piece.get("text", "")
+
         ai_ov = ai_piece.get("overrides", {})
-        merged_ov = _merge_run_overrides(orig_ov, ai_ov)
+        if not isinstance(ai_ov, dict):
+            ai_ov = {}
+
+        if isinstance(orig_piece, dict) and orig_piece.get("type") == "Text":
+            orig_ov = orig_piece.get("overrides", {})
+            if not isinstance(orig_ov, dict):
+                orig_ov = {}
+            merged_ov = _merge_run_overrides(orig_ov, ai_ov)
+        else:
+            merged_ov = copy.deepcopy(ai_ov)
+
         if merged_ov:
-            orig_piece["overrides"] = merged_ov
-        elif "overrides" in orig_piece:
-            del orig_piece["overrides"]
+            merged_piece["overrides"] = merged_ov
+        else:
+            merged_piece.pop("overrides", None)
+
+        merged_content.append(merged_piece)
+
+    return merged_content
 
 
 def _merge_paragraph_format(orig_fmt: dict, ai_fmt: dict) -> dict:
