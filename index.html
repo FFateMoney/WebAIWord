@@ -13,6 +13,41 @@
   <header id="toolbar">
     <div class="toolbar-brand">📝 WebAIWord</div>
     <div class="toolbar-actions">
+      <select id="select-font" class="toolbar-control" disabled title="字体">
+        <option value="">字体</option>
+        <option value="Calibri">Calibri</option>
+        <option value="Arial">Arial</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Microsoft YaHei">微软雅黑</option>
+        <option value="SimSun">宋体</option>
+      </select>
+      <select id="select-size" class="toolbar-control" disabled title="字号">
+        <option value="">字号</option>
+        <option value="12">12</option>
+        <option value="14">14</option>
+        <option value="16">16</option>
+        <option value="18">18</option>
+        <option value="24">24</option>
+        <option value="30">30</option>
+      </select>
+      <button id="btn-bold" disabled title="加粗">B</button>
+      <button id="btn-italic" disabled title="斜体"><em>I</em></button>
+      <button id="btn-underline" disabled title="下划线"><u>U</u></button>
+      <button id="btn-strikeout" disabled title="删除线"><s>S</s></button>
+      <label class="toolbar-color" title="文字颜色">
+        <span>A</span>
+        <input id="input-text-color" type="color" value="#1f2937" disabled />
+      </label>
+      <label class="toolbar-color" title="高亮颜色">
+        <span>H</span>
+        <input id="input-highlight-color" type="color" value="#fef08a" disabled />
+      </label>
+      <button id="btn-align-left" disabled title="左对齐">左</button>
+      <button id="btn-align-center" disabled title="居中">中</button>
+      <button id="btn-align-right" disabled title="右对齐">右</button>
+      <button id="btn-align-justify" disabled title="两端对齐">两端</button>
+      <button id="btn-undo" disabled title="撤销">↶</button>
+      <button id="btn-redo" disabled title="重做">↷</button>
       <button id="btn-import" disabled title="导入 .docx 文档">导入 .docx</button>
       <button id="btn-export" disabled title="导出为 .docx 文件">导出 .docx</button>
       <button id="btn-view-aiview" disabled title="查看当前 AIView JSON">查看 AIView</button>

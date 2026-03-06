@@ -29,6 +29,20 @@ const btnExport   = document.getElementById('btn-export')
 const btnApiKey   = document.getElementById('btn-apikey')
 const btnViewAiView = document.getElementById('btn-view-aiview')
 const btnSend     = document.getElementById('btn-send')
+const btnBold     = document.getElementById('btn-bold')
+const btnItalic   = document.getElementById('btn-italic')
+const btnUnderline = document.getElementById('btn-underline')
+const btnStrikeout = document.getElementById('btn-strikeout')
+const btnAlignLeft = document.getElementById('btn-align-left')
+const btnAlignCenter = document.getElementById('btn-align-center')
+const btnAlignRight = document.getElementById('btn-align-right')
+const btnAlignJustify = document.getElementById('btn-align-justify')
+const btnUndo = document.getElementById('btn-undo')
+const btnRedo = document.getElementById('btn-redo')
+const selectFont = document.getElementById('select-font')
+const selectSize = document.getElementById('select-size')
+const inputTextColor = document.getElementById('input-text-color')
+const inputHighlightColor = document.getElementById('input-highlight-color')
 const chatInput   = document.getElementById('chat-input')
 const fileInput   = document.getElementById('file-input')
 
@@ -57,6 +71,24 @@ function hideProgress() {
 
 // ─── Enable all toolbar buttons ──────────────────────────────────────────────
 function enableToolbar() {
+  [
+    btnBold,
+    btnItalic,
+    btnUnderline,
+    btnStrikeout,
+    btnAlignLeft,
+    btnAlignCenter,
+    btnAlignRight,
+    btnAlignJustify,
+    btnUndo,
+    btnRedo,
+    selectFont,
+    selectSize,
+    inputTextColor,
+    inputHighlightColor,
+  ].forEach((control) => {
+    control.disabled = false
+  })
   btnImport.disabled   = false
   btnExport.disabled   = false
   btnApiKey.disabled   = false
@@ -330,6 +362,43 @@ state.editor = new Editor(
     }
   }
 )
+
+function bindEditorToolbarActions() {
+  btnBold.addEventListener('click', () => state.editor.command.executeBold())
+  btnItalic.addEventListener('click', () => state.editor.command.executeItalic())
+  btnUnderline.addEventListener('click', () => state.editor.command.executeUnderline())
+  btnStrikeout.addEventListener('click', () => state.editor.command.executeStrikeout())
+
+  btnAlignLeft.addEventListener('click', () => state.editor.command.executeRowFlex('left'))
+  btnAlignCenter.addEventListener('click', () => state.editor.command.executeRowFlex('center'))
+  btnAlignRight.addEventListener('click', () => state.editor.command.executeRowFlex('right'))
+  btnAlignJustify.addEventListener('click', () => state.editor.command.executeRowFlex('justify'))
+
+  btnUndo.addEventListener('click', () => state.editor.command.executeUndo())
+  btnRedo.addEventListener('click', () => state.editor.command.executeRedo())
+
+  selectFont.addEventListener('change', () => {
+    if (!selectFont.value) return
+    state.editor.command.executeFont(selectFont.value)
+  })
+
+  selectSize.addEventListener('change', () => {
+    if (!selectSize.value) return
+    const size = Number(selectSize.value)
+    if (!Number.isFinite(size)) return
+    state.editor.command.executeSize(size)
+  })
+
+  inputTextColor.addEventListener('change', () => {
+    state.editor.command.executeColor(inputTextColor.value)
+  })
+
+  inputHighlightColor.addEventListener('change', () => {
+    state.editor.command.executeHighlight(inputHighlightColor.value)
+  })
+}
+
+bindEditorToolbarActions()
 
 // ─── API Key 模态框 ───────────────────────────────────────────────────────────
 
