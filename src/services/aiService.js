@@ -53,6 +53,7 @@ export class AIService {
   /**
    * Normalize a custom OpenAI-compatible URL.
    * Accepts host-only, /v1, /v1beta, /openai, or full /chat/completions paths.
+   * Note: users are expected to provide the version segment themselves when needed.
    * @param {string} baseUrl
    * @returns {string}
    */
@@ -65,24 +66,39 @@ export class AIService {
     normalized = normalized.replace(/\/$/, '')
     if (/\/chat\/completions$/i.test(normalized)) return normalized
 
+    // Gemini OpenAI-compatible base usually needs `/openai` before `/chat/completions`.
+    if (/generativelanguage\.googleapis\.com$/i.test(new URL(normalized).hostname)) {
+      if (/\/openai$/i.test(normalized)) return `${normalized}/chat/completions`
+      if (/\/v\d[\w.-]*$/i.test(normalized)) return `${normalized}/openai/chat/completions`
+    }
+
     // Supports versions like /v1, /v2, /v1beta, /v1alpha, etc.
     if (/\/v\d[\w.-]*$/i.test(normalized)) return `${normalized}/chat/completions`
 
-    // Gemini OpenAI-compatible path often uses /v1beta/openai as the base.
+    // Some providers use /openai as the API root.
     if (/\/openai$/i.test(normalized)) return `${normalized}/chat/completions`
 
-    return `${normalized}/v1/chat/completions`
+    return `${normalized}/chat/completions`
   }
 
   async *_streamOpenAI(messages, apiKey, model, url) {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, messages, stream: true }),
-    })
+    let resp
+    try {
+      resp = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ model, messages, stream: true }),
+      })
+    } catch (err) {
+      if (err instanceof TypeError) {
+        throw new Error(`请求失败：可能是 CORS 被拦截或 URL 不可达。当前请求地址：${url}。
+提示：Gemini OpenAI 兼容地址通常应为 https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`) 
+      }
+      throw err
+    }
 
     if (!resp.ok) {
       const errText = await resp.text()
