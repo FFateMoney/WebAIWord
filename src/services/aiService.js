@@ -44,10 +44,28 @@ export class AIService {
     } else {
       // openai or custom
       const url = provider === 'custom' && baseUrl
-        ? baseUrl.replace(/\/$/, '') + '/chat/completions'
+        ? this._resolveCustomOpenAIUrl(baseUrl)
         : 'https://api.openai.com/v1/chat/completions'
       yield* this._streamOpenAI(messages, apiKey, model, url)
     }
+  }
+
+  /**
+   * Normalize a custom OpenAI-compatible URL.
+   * Accepts host-only, /v1, or full /chat/completions paths.
+   * @param {string} baseUrl
+   * @returns {string}
+   */
+  _resolveCustomOpenAIUrl(baseUrl) {
+    let normalized = baseUrl.trim()
+    if (!/^https?:\/\//i.test(normalized)) {
+      normalized = `https://${normalized}`
+    }
+
+    normalized = normalized.replace(/\/$/, '')
+    if (/\/chat\/completions$/i.test(normalized)) return normalized
+    if (/\/v\d+$/i.test(normalized)) return `${normalized}/chat/completions`
+    return `${normalized}/v1/chat/completions`
   }
 
   async *_streamOpenAI(messages, apiKey, model, url) {
@@ -62,6 +80,9 @@ export class AIService {
 
     if (!resp.ok) {
       const errText = await resp.text()
+      if (/model/i.test(errText)) {
+        throw new Error(`OpenAI API error ${resp.status}: ${errText}\n提示：若使用 DeepSeek，请将模型改为 deepseek-chat 或 deepseek-reasoner。`)
+      }
       throw new Error(`OpenAI API error ${resp.status}: ${errText}`)
     }
 
