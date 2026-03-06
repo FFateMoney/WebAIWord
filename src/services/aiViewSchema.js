@@ -23,6 +23,7 @@ function normalizeRun(rawRun) {
   if (legacySource.italic !== undefined) overrides.italic = !!legacySource.italic
   if (typeof legacySource.size === 'number' && Number.isFinite(legacySource.size)) overrides.size = legacySource.size
   if (typeof legacySource.font_ascii === 'string' && legacySource.font_ascii.trim()) overrides.font_ascii = legacySource.font_ascii.trim()
+  if (typeof legacySource.font_east_asia === 'string' && legacySource.font_east_asia.trim()) overrides.font_east_asia = legacySource.font_east_asia.trim()
 
   const color = normalizeColor(legacySource.color)
   if (color) overrides.color = color

@@ -113,7 +113,8 @@ function buildCanonicalAiViewRules() {
       "italic": false,
       "size": 24,
       "color": "#112233",
-      "font_ascii": "Calibri"
+      "font_ascii": "Calibri",
+      "font_east_asia": "Microsoft YaHei"
     }
   }
 - overrides 字段按需提供，不改动的字段不要写。
@@ -121,7 +122,7 @@ function buildCanonicalAiViewRules() {
 [C] 禁止使用的旧字段（严禁）
 - 段落顶层 alignment（错误）
 - block.runs / block.text（错误）
-- run 顶层 bold/italic/size/color/font_ascii（错误）
+- run 顶层 bold/italic/size/color/font_ascii/font_east_asia（错误）
 - targetId（错误，必须用 target_id）
 
 [D] Patch 操作要求（必须）

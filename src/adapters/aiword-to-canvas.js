@@ -2,7 +2,7 @@
  * Bidirectional format adapter between canonical AIView and canvas-editor elements.
  * Canonical rules:
  * - Paragraph alignment: block.paragraph_format.alignment
- * - Text styling: piece.overrides.{bold, italic, size, color, font_ascii}
+ * - Text styling: piece.overrides.{bold, italic, size, color, font_ascii, font_east_asia}
  * - Text run: piece.type === 'Text'
  */
 
@@ -79,7 +79,7 @@ export function aiwordToCanvas(aiView) {
         el.color = colorVal.startsWith('#') ? colorVal : `#${colorVal}`
       }
 
-      const fontVal = overrides.font_ascii ?? defaultRun.font_ascii
+      const fontVal = overrides.font_east_asia ?? overrides.font_ascii ?? defaultRun.font_east_asia ?? defaultRun.font_ascii
       if (fontVal) el.font = fontVal
 
       el.rowFlex = rowFlex
@@ -136,7 +136,10 @@ export function canvasToAiword(canvasData, originalParagraphAiView) {
       if (el.italic !== undefined) overrides.italic = !!el.italic
       if (el.size !== undefined) overrides.size = el.size * 2
       if (el.color !== undefined) overrides.color = el.color
-      if (el.font !== undefined) overrides.font_ascii = el.font
+      if (el.font !== undefined) {
+        overrides.font_ascii = el.font
+        overrides.font_east_asia = el.font
+      }
 
       const run = {
         type: 'Text',
