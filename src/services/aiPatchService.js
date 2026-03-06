@@ -116,6 +116,14 @@ function resolveTargetId(opItem) {
   return opItem?.target_id ?? opItem?.targetId ?? opItem?.id ?? null
 }
 
+function resolveIndexHintFromTargetId(targetId) {
+  if (typeof targetId !== 'string') return null
+  const match = targetId.match(/(?:^|_)(\d+)$/)
+  if (!match) return null
+  const idx = Number(match[1])
+  return Number.isInteger(idx) && idx >= 0 ? idx : null
+}
+
 function findTargetIndexOrThrow(doc, opItem) {
   const targetId = resolveTargetId(opItem)
   if (!targetId) {
@@ -124,6 +132,11 @@ function findTargetIndexOrThrow(doc, opItem) {
 
   const idx = findBlockIndexById(doc, targetId)
   if (idx < 0) {
+    const hintedIdx = resolveIndexHintFromTargetId(targetId)
+    const body = doc?.document?.body
+    if (hintedIdx != null && Array.isArray(body) && hintedIdx < body.length) {
+      return hintedIdx
+    }
     throw new Error(`未找到目标段落 id: ${targetId}`)
   }
   return idx
@@ -164,7 +177,7 @@ function normalizeUpdateFields(opItem) {
 function normalizePatchOperation(rawOpItem) {
   if (!rawOpItem || typeof rawOpItem !== 'object') return rawOpItem
 
-  if (rawOpItem.op) return rawOpItem
+  if (rawOpItem.op) return normalizePatchOperationPayload(rawOpItem)
 
   // 兼容模型常见错误：把 op 名称当作外层 key
   // 例如：{ "replace_by_id": { "target_id": "p1", "value": {...} } }
@@ -182,12 +195,29 @@ function normalizePatchOperation(rawOpItem) {
 
     const payload = rawOpItem[key]
     if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-      return { op: key, ...payload }
+      return normalizePatchOperationPayload({ op: key, ...payload })
     }
-    return { op: key, value: payload }
+    return normalizePatchOperationPayload({ op: key, value: payload })
   }
 
-  return rawOpItem
+  return normalizePatchOperationPayload(rawOpItem)
+}
+
+function normalizePatchOperationPayload(opItem) {
+  if (!opItem || typeof opItem !== 'object') return opItem
+
+  const normalized = { ...opItem }
+  const op = normalized.op
+  if (
+    (op === 'insert_after_id' || op === 'insert_before_id' || op === 'replace_by_id') &&
+    normalized.value == null &&
+    normalized.paragraph &&
+    typeof normalized.paragraph === 'object'
+  ) {
+    normalized.value = normalized.paragraph
+  }
+
+  return normalized
 }
 
 function normalizePatchEnvelopeShape(patchEnvelope) {
